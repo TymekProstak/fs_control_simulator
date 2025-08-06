@@ -107,7 +107,12 @@ namespace metzler_model {
             state_ = initial_state;
         }
 
-        inline void update_state(const all_forces& forces, double dt) {
+        void update_state(const all_forces& forces, double dt);
+
+
+        // do cpp
+
+        void update_state(const all_forces& forces, double dt) {
             // Update the state based on the forces and time step
             state_.ax = (forces.fx - forces.fy * state_.vy) / params_.mass;
             state_.ay = (forces.fy + forces.fx * state_.vx) / params_.mass;
@@ -119,6 +124,10 @@ namespace metzler_model {
             state_.y += state_.vy * dt;
             state_.yaw += state_.yaw_rate * dt;
         }
+
+        //
+
+        
 
         
 
