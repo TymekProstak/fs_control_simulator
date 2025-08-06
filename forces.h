@@ -7,11 +7,10 @@ namespace metzler_model {
 
 
     struct forces_params {
+        
         double drag_coefficient;
-        double lift_coefficient;
-        double wheelbase; // Distance between front and rear axles
-        double wheel_distance;
-
+        double downforce_coefficient;
+        
     };
 
     

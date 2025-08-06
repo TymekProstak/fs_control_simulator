@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
-#include <Eigen/Dense>
 namespace metzler_model {
 
 

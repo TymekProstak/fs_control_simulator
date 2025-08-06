@@ -33,7 +33,7 @@ namespace metzler_model {
         
 
         
-        engine_state get_state() const { return state_; }
+        inline engine_state get_state() const { return state_; }
 
         inline void set_state(const engine_state& new_state) {
             state_ = new_state;

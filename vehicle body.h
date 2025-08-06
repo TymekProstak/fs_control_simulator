@@ -23,9 +23,11 @@ namespace metzler_model {
         double inertia; // moment bezwładności pojazdu
         double wheelbase; // rozstaw osi
         double wheel_distance; // odległość między kołami
+        double wheel_distance_front; // odległość między kołami z przodu
+        double wheel_distance_rear; // odległość między kołami z tyłu
         double h_cg; // wysokość środka ciężkości
-        double lf_cg; // odległość środka ciężkości od przedniej osi
-        double lr_cg; // odległość środka ciężkości od tylnej osi
+        double lf; // odległość środka ciężkości od przedniej osi
+        double lr; // odległość środka ciężkości od tylnej osi
 
     };
 
@@ -107,22 +109,38 @@ namespace metzler_model {
             state_ = initial_state;
         }
 
-        void update_state(const all_forces& forces, double dt);
+        void update_state(const forces_sumed& forces, double dt);
 
 
         // do cpp
 
-        void update_state(const all_forces& forces, double dt) {
+        void update_state(const forces_sumed& forces, double dt) {
             // Update the state based on the forces and time step
-            state_.ax = (forces.fx - forces.fy * state_.vy) / params_.mass;
-            state_.ay = (forces.fy + forces.fx * state_.vx) / params_.mass;
-            state_.yaw_rate = (forces.torque / params_.inertia);
-            
-            state_.vx += state_.ax * dt;
-            state_.vy += state_.ay * dt;
+           
+
+            // NIE WOLNO ZMIEŃAĆ KOLEJNOŚCI OPERACJI, bo to jest układ równań różniczkowych
+
+
             state_.x += state_.vx * dt;
             state_.y += state_.vy * dt;
+
             state_.yaw += state_.yaw_rate * dt;
+
+
+            state_.ax = (forces.fx - forces.fy * state_.vy) / params_.mass;  // longitudinal acceleration in INERTIAL
+            state_.ay = (forces.fy + forces.fx * state_.vx) / params_.mass;  // lateral acceleration in INERTIAL
+
+            double vx_dot =  state_.ax + state_.vy * state_.yaw_rate ;  // longitudinal acceleration in VEHICLE frame
+            double vy_dot = state_.ay - state_.vx * state_.yaw_rate;  // lateral acceleration in VEHICLE frame
+
+            state_.vx += vx_dot * dt;  // Update longitudinal velocity in VEHICLE frame
+            state_.vy += vy_dot * dt;  // Update lateral velocity in VEHICLE frame
+            
+            // Update yaw rate based on the torque and inertia
+
+            state_.yaw_rate = (forces.torque / params_.inertia);
+
+          
         }
 
         //
