@@ -3,7 +3,7 @@
 namespace metzler_model {
 
 
-    Tire::Tire(const tire_params& params, const tire_state& initial_state = {0.0, 0.0 , 0.0 , 0.0})
+    Tire::Tire(const tire_params& params, const tire_state& initial_state)
         : params_(params), state_(initial_state) {}
 
 
@@ -129,9 +129,34 @@ namespace metzler_model {
 
     void Tire::update_omega(double engine_torque, double tractive_force, double dt){
 
-        double derative = calculate_omega_derivative(engine_torque, tractive_force);
-        state_.omega += derative * dt;
+        double derivative = calculate_omega_derivative(engine_torque, tractive_force);
+        state_.omega += derivative * dt;
     }
+
+    std::vector<double> Tire::state_to_vector() const {
+        /**
+         * @brief Converts the tire state to a vector representation.
+         * @return Vector containing the tire state parameters.
+         */
+        return {state_.omega, state_.slip_angle, state_.slip_ratio, state_.steer_angle};
+    }
+
+    void Tire::vector_to_state(const std::vector<double>& state_vector) {
+        /**
+         * @brief Converts a vector representation to the tire state.
+         * @param state_vector Vector containing the tire state parameters.
+         */
+        if (state_vector.size() != 4) {
+            throw std::invalid_argument("State vector must have exactly 4 elements.");
+        }
+        state_.omega = state_vector[0];
+        state_.slip_angle = state_vector[1];
+        state_.slip_ratio = state_vector[2];
+        state_.steer_angle = state_vector[3];
+    }
+
+
+} // namespace metzler_model
 
 
 

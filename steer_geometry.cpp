@@ -33,10 +33,6 @@ namespace metzler_model {
 
         return result;
 
-
-    
-
-
     }
 
 

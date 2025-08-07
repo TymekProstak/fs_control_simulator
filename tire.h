@@ -158,7 +158,7 @@ namespace metzler_model {
              * @param tractive_force [N] Tractive force at the tire-road interface.
              * @param dt [s] Time step.
              */
-            
+
             void update_omega(double engine_torque = 0.0 ,double tractive_force = 0.0 , double dt);
 
             //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -166,7 +166,17 @@ namespace metzler_model {
             inline void reset_tire_state() {
                 state_ = tire_state{0.0, 0.0, 0.0, 0.0};
             }
-        
+
+
+            ////// *** struct - vec transforms /////////////////////////////
+
+            std::vector<double> state_to_vector() const ;
+
+            void vector_to_state(const std::vector<double>& vec) ;
+
+            inline void reset_tire_state() {
+                state_ = tire_state{0.0, 0.0, 0.0, 0.0};
+            }
 
         private:
 
