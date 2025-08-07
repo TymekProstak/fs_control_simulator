@@ -109,4 +109,8 @@ normal_model_forces NormalModelForces::calculate_normal_forces(double vx, double
     return forces;
 }
 
+void NormalModelForces::calculate_and_set_normal_forces(double vx, double vy, double ax, double ay) {
+    forces_ = calculate_normal_forces(vx, vy, ax, ay);
+}
+
 } // namespace

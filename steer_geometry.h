@@ -17,6 +17,7 @@ namespace metzler_model {
         double wheel_distance_rear; // odległość między kołami z tyłu
         double wheel_distance_avg; // średnia odległość między kołami
         double max_steering_angle; // maksymalny kąt skrętu
+        double min_steering_angle; // minimalny kąt skrętu 
 
         double lf; // odległość środka ciężkości od przedniej osi
         double lr; // odległość środka ciężkości od tylnej osi
@@ -35,6 +36,7 @@ namespace metzler_model {
 
         double front_left_steer_angle;
         double front_right_steer_angle;
+
         double steer_actual; // aktualny kąt skrętu na kolumnie kierowniczej
 
 
@@ -44,13 +46,41 @@ namespace metzler_model {
         double rear_right_slip_angle; // kąt poślizgu tylnego prawego koła
     };
 
+    struct slip_angles {
+        double front_left_slip_angle;
+        double front_right_slip_angle;
+        double rear_left_slip_angle;
+        double rear_right_slip_angle;
+    };
+
+    struct steer_angles { 
+
+        double front_left_steer_angle; // kąt skrętu przedniego lewego koła
+        double front_right_steer_angle; // kąt skrętu przedniego prawego koła
+        double steer_actual; // aktualny kąt skrętu na kolumnie kierowniczej
+    };
+
 
 
     class SteerGeometry {
         
     public:
-        SteerGeometry(const steer_geometry_params& params, const steer_geometry_state& initial_state = steer_geometry_state{0.0, 0.0})
-            : params_(params), state_(initial_state) {}
+
+
+        ///***************///// KLASA STEERGEOMETRY DEFINICJE ///////*****************///
+
+        /// Konstruktor klasy SteerGeometry
+        /// @param params Struktura z parametrami geometrii układu kierowniczego
+        /// @param initial_state Struktura z początkowym stanem układu kierowniczego
+        /// @throws std::invalid_argument Jeśli parametry są nieprawidłowe
+        ///
+        /// Konstruktor inicjalizuje parametry geometrii układu kierowniczego oraz stan początkowy.
+        /// W przypadku nieprawidłowych parametrów, zgłasza wyjątek std::invalid_argument.
+        ///
+        /// @note Zakłada, że wszystkie parametry są dodatnie i sensowne.
+
+        SteerGeometry(const steer_geometry_params& params, const steer_geometry_state& initial_state = steer_geometry_state{0.0, 0.0 , 0.0, 0.0, 0.0, 0.0, 0.0}) {};
+            
 
 
 
@@ -59,6 +89,11 @@ namespace metzler_model {
         //////***** Gettery /////////////////////////
 
         inline steer_geometry_state get_state() const { return state_; }
+
+
+        inline slip_angles get_slip_angles() const {
+            return {state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle};
+        }
 
 
         inline double get_front_left_steer_angle() const {
@@ -99,6 +134,22 @@ namespace metzler_model {
             state_ = new_state;
         }
 
+
+        inline void set_slip_angles(const slip_angles& new_slip_angles) {
+            state_.front_left_slip_angle = new_slip_angles.front_left_slip_angle;
+            state_.front_right_slip_angle = new_slip_angles.front_right_slip_angle;
+            state_.rear_left_slip_angle = new_slip_angles.rear_left_slip_angle;
+            state_.rear_right_slip_angle = new_slip_angles.rear_right_slip_angle;
+        }
+
+        inline void set_steer_angles(const steer_angles& new_steer_angles) {
+            state_.front_left_steer_angle = new_steer_angles.front_left_steer_angle;
+            state_.front_right_steer_angle = new_steer_angles.front_right_steer_angle;
+            state_.steer_actual = new_steer_angles.steer_actual;
+        }
+
+
+
         inline void set_front_left_steer_angle(double angle) {
             state_.front_left_steer_angle = angle;
         }
@@ -132,12 +183,17 @@ namespace metzler_model {
 
 
         ////***** Transformacje wektorów i struktur ********////
+
+
         
-        inline vector<double> state_to_vector() const {
+
+
+
+        std::vector<double> state_to_vector() const {
             return {state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_actual,
                     state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle};
         }
-        inline void vector_to_state(const vector<double>& vec) {
+        void vector_to_state(const std::vector<double>& vec) {
             if (vec.size() != 7) {
                 throw std::invalid_argument("Vector size must be 7");
             }
@@ -153,51 +209,56 @@ namespace metzler_model {
         //////////////////////////////////////////////
 
 
-
-         void calculate_slip_angles( double vx, double vy , double yaw_rate) {;
-         void calculate_steer_angles ();
-
-
-
-
-
-
-
-
-
-        /// do cpp 
-
-        void calculate_slip_angles( double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) {
-
-            // Calculate the slip angles for each wheel based on the vehicle's velocity and yaw rate
-           
+        ///***************///// Calculate slip angles ///////*****************///
+        /// This function calculates the slip angles for each wheel based on the vehicle's velocity and yaw rate.
+        /// It assumes a simple kinematic model for the vehicle.
+        ///
+        /// @param vx Vehicle's longitudinal velocity
+        /// @param vy Vehicle's lateral velocity
+        /// @param yaw_rate Vehicle's yaw rate
+        /// @return void
+        ///
 
 
-            state_.rear_left_slip_angle = std::atan2(vy - params_.lr_cg * yaw_rate, vx - yaw_rate * params_.wheel_distance_rear / 2.0);
-            state_.rear_right_slip_angle = std::atan2(vy - params_.lr_cg * yaw_rate, vx + yaw_rate * params_.wheel_distance_rear / 2.0);
+        // returning function calculate slip angles based on vehicle's velocity and yaw rate
+        slip_angles calculate_slip_angles( double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) const {};
+
+        /// returning  function calculates the steer angles based on the vehicle's geometry and the actual  steering on steering column.
+        steer_angles calculate_steer_angles() const {} ;
 
 
-            state_.front_left_slip_angle = std::atan2(vy + params_.lf_cg * yaw_rate, vx - yaw_rate * params_.wheel_distance_front / 2.0) - state_.front_left_steer_angle;
-            state_.front_right_slip_angle = std::atan2(vy + params_.lf_cg * yaw_rate, vx + yaw_rate * params_.wheel_distance_front / 2.0) - state_.front_right_steer_angle; ;
 
-            
-            //ensure slip angles are within the range of -pi to pi
+        //  void non reutirng, changing class elements function that  Calculate steer angles based on link geometry -> for now assuming an ideal ackerman steering geometry
+         void calculate_and_set_steer_angles () {};
 
-            state_.rear_left_slip_angle = std::fmod(state_.rear_left_slip_angle + M_PI, 2 * M_PI) - M_PI;
-            state_.rear_right_slip_angle = std::fmod(state_.rear_right_slip_angle + M_PI, 2 * M_PI) - M_PI;
-            state_.front_left_slip_angle = std::fmod(state_.front_left_slip_angle + M_PI, 2 * M_PI) - M_PI;
-            state_.front_right_slip_angle = std::fmod(state_.front_right_slip_angle + M_PI, 2 * M_PI) - M_PI;
+         
+        /// This function calculates the derivative of the steer angle based on the input steer angle.
+         void calculate_and_set_slip_angles(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) {};
 
 
-        }
 
-        void calculate_steer_angles( ) {
+
+        
+
+
+
+
+        
+
+        
+
+        void calculate_steer_angles( ) const  {
              
             // for now assuming an ideal ackerman steering geometry
             
 
 
         }
+
+
+
+
+
 
         double derivative_steer(double steer_input) const {
             
@@ -209,7 +270,7 @@ namespace metzler_model {
             return derivative;
         }
         
-        inline void update(double steer_input, double dt) {
+        void update(double steer_input, double dt) {
             // Calculate the derivative of the steer angle
             double derivative = derivative_steer(steer_input);
             
