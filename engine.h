@@ -6,7 +6,7 @@
 namespace metzler_model {
 
     struct engine_state {
-        double torque;
+        double torque; // positive is clockwise -> eg. positive with respect to forward motion
     };
 
     /// **** //// strukutura z parametrami silnika //////

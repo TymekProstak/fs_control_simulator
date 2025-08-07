@@ -31,33 +31,20 @@ namespace metzler_model {
 
 
 
-
-    struct steer_geometry_state {
-
-        double front_left_steer_angle;
-        double front_right_steer_angle;
-
-        double steer_angle_on_column; // aktualny kąt skrętu na kolumnie kierowniczej
-
-
-        double front_left_slip_angle; // kąt poślizgu przedniego lewego koła
-        double front_right_slip_angle; // kąt poślizgu przedniego prawego koła
-        double rear_left_slip_angle; // kąt poślizgu tylnego lewego koła
-        double rear_right_slip_angle; // kąt poślizgu tylnego prawego koła
-    };
-
-    struct slip_angles {
-        double front_left_slip_angle;
-        double front_right_slip_angle;
-        double rear_left_slip_angle;
-        double rear_right_slip_angle;
-    };
-
     struct steer_angles { 
 
         double front_left_steer_angle; // kąt skrętu przedniego lewego koła
         double front_right_steer_angle; // kąt skrętu przedniego prawego koła
         double steer_angle_on_column; // aktualny kąt skrętu na kolumnie kierowniczej
+    };
+
+    struct steer_geometry_state {
+
+        double front_left_steer_angle; // kąt skrętu przedniego lewego koła
+        double front_right_steer_angle; // kąt skrętu przedniego prawego koła
+        double steer_angle_on_column; // aktualny kąt skrętu na kolumnie kierowniczej
+
+
     };
 
 
@@ -79,22 +66,12 @@ namespace metzler_model {
         ///
         /// @note Zakłada, że wszystkie parametry są dodatnie i sensowne.
 
-        SteerGeometry(const steer_geometry_params& params, const steer_geometry_state& initial_state = steer_geometry_state{0.0, 0.0 , 0.0, 0.0, 0.0, 0.0, 0.0}) ;
+        SteerGeometry(const steer_geometry_params& params, const steer_geometry_state& initial_state = steer_geometry_state{0.0, 0.0 , 0.0}) ;
             
-
-
-
-
 
         //////***** Gettery /////////////////////////
 
         inline steer_geometry_state get_state() const { return state_; }
-
-
-        inline slip_angles get_slip_angles() const {
-            return {state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle};
-        }
-
 
         inline double get_front_left_steer_angle() const {
             return state_.front_left_steer_angle;
@@ -128,12 +105,6 @@ namespace metzler_model {
             return  { state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_angle_on_column };
         }
 
-        inline  slip_angles get_slip_angels() {
-
-
-            return  { state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle };
-        }
-
         //////////////////////////////////////////////
 
 
@@ -143,14 +114,6 @@ namespace metzler_model {
 
         inline void set_state(const steer_geometry_state& new_state) {
             state_ = new_state;
-        }
-
-
-        inline void set_slip_angles(const slip_angles& new_slip_angles) {
-            state_.front_left_slip_angle = new_slip_angles.front_left_slip_angle;
-            state_.front_right_slip_angle = new_slip_angles.front_right_slip_angle;
-            state_.rear_left_slip_angle = new_slip_angles.rear_left_slip_angle;
-            state_.rear_right_slip_angle = new_slip_angles.rear_right_slip_angle;
         }
 
         inline void set_steer_angles(const steer_angles& new_steer_angles) {
@@ -174,22 +137,6 @@ namespace metzler_model {
         }
 
 
-        inline void set_front_left_slip_angle(double angle) {
-            state_.front_left_slip_angle = angle;
-        }
-
-        inline void set_front_right_slip_angle(double angle) {
-            state_.front_right_slip_angle = angle;
-        }
-
-        inline void set_rear_left_slip_angle(double angle) {
-            state_.rear_left_slip_angle = angle;
-        }
-
-        inline void set_rear_right_slip_angle(double angle) {
-            state_.rear_right_slip_angle = angle;
-        }
-
         //////////////////////////////////////////////
 
 
@@ -211,20 +158,7 @@ namespace metzler_model {
         //////////////////////////////////////////////
 
 
-        ///***************///// Calculate slip angles ///////*****************///
-        /// This function calculates the slip angles for each wheel based on the vehicle's velocity and yaw rate.
-        /// It assumes a simple kinematic model for the vehicle.
-        ///
-        /// @param vx Vehicle's longitudinal velocity
-        /// @param vy Vehicle's lateral velocity
-        /// @param yaw_rate Vehicle's yaw rate
-        /// @return void
-        ///
-
-
-        // returning function calculate slip angles based on vehicle's velocity and yaw rate
-        slip_angles calculate_slip_angles( double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) const ;
-
+       
         /// returning  function calculates the steer angles based on the vehicle's geometry and the actual  steering on steering column.
         steer_angles calculate_steer_angles() const  ;
 
@@ -232,15 +166,6 @@ namespace metzler_model {
 
         //  void non reutirng, changing class elements function that  Calculate steer angles based on link geometry -> for now assuming an ideal ackerman steering geometry
          void calculate_and_set_steer_angles() ;
-
-         
-        /
-         void calculate_and_set_slip_angles(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) ;
-
-
-
-         //
-        void calculate_steer_angles() const ;
 
 
         /// This function calculates the derivative of the steer angle based on the input steering angle.

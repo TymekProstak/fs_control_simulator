@@ -3,7 +3,7 @@
  
  namespace metzler_model {
  
-    Engine::Engine(const engine_params& params, const engine_state& initial_state = engine_state{0.0})
+    Engine::Engine(const engine_params& params, const engine_state& initial_state )
             : params_(params), state_(initial_state) {}
 
     double Engine::engine_torque_derivative(double engine_input) const {
