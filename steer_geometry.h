@@ -79,7 +79,7 @@ namespace metzler_model {
         ///
         /// @note Zakłada, że wszystkie parametry są dodatnie i sensowne.
 
-        SteerGeometry(const steer_geometry_params& params, const steer_geometry_state& initial_state = steer_geometry_state{0.0, 0.0 , 0.0, 0.0, 0.0, 0.0, 0.0}) {};
+        SteerGeometry(const steer_geometry_params& params, const steer_geometry_state& initial_state = steer_geometry_state{0.0, 0.0 , 0.0, 0.0, 0.0, 0.0, 0.0}) ;
             
 
 
@@ -199,13 +199,13 @@ namespace metzler_model {
         /// @return A vector containing the current state of the steer geometry.
         ///
 
-        std::vector<double> state_to_vector() const {} ;
+        std::vector<double> state_to_vector() const ;
 
         /// This function converts a vector representation to the current state of the steer geometry.
         /// @param vec A vector containing the state of the steer geometry.
         /// @throws std::invalid_argument If the vector size is not equal to 7.
 
-        void vector_to_state(const std::vector<double>& vec) {};
+        void vector_to_state(const std::vector<double>& vec) ;
 
 
         //////////////////////////////////////////////
@@ -223,61 +223,41 @@ namespace metzler_model {
 
 
         // returning function calculate slip angles based on vehicle's velocity and yaw rate
-        slip_angles calculate_slip_angles( double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) const {};
+        slip_angles calculate_slip_angles( double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) const ;
 
         /// returning  function calculates the steer angles based on the vehicle's geometry and the actual  steering on steering column.
-        steer_angles calculate_steer_angles() const {} ;
+        steer_angles calculate_steer_angles() const  ;
 
 
 
         //  void non reutirng, changing class elements function that  Calculate steer angles based on link geometry -> for now assuming an ideal ackerman steering geometry
-         void calculate_and_set_steer_angles () {};
+         void calculate_and_set_steer_angles() ;
 
          
-        /// This function calculates the derivative of the steer angle based on the input steer angle.
-         void calculate_and_set_slip_angles(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) {};
+        /
+         void calculate_and_set_slip_angles(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0) ;
 
 
 
-
-        
-
-
+         //
+        void calculate_steer_angles() const ;
 
 
-        
+        /// This function calculates the derivative of the steer angle based on the input steering angle.
+        /// @param steer_input The input steering angle
+        /// @return The derivative of the steer angle
+        ///
+        /// This function calculates the derivative of the steer angle based on the input steering angle.
+        /// It uses a simple first-order system to model the steering column's response.
 
-        
+        double derivative_steer(double steer_input) const;
 
-        void calculate_steer_angles( ) const  {
-             
-            // for now assuming an ideal ackerman steering geometry
-            
+        /// This function updates the steer angle based on the input steering angle and time step.
+        /// @param steer_input The input steering angle
+        /// @param dt The time step for the update
+        /// note it uses Euler method for integration
 
-
-        }
-
-
-
-
-
-
-        double derivative_steer(double steer_input) const {
-            
-            // 1 rzędowy układ kierowniczy
-            double derivative = (steer_input - state_.steer_actual) / params_.T;
-
-            // TODO : Jakieś filtry górno/dolno przepustowe ? 
-
-            return derivative;
-        }
-        
-        void update(double steer_input, double dt) {
-            // Calculate the derivative of the steer angle
-            double derivative = derivative_steer(steer_input);
-            
-            // Update the state using Euler's method
-            state_.steer_actual += derivative * dt;
+        void update(double steer_input, double dt);
 
 
     private:

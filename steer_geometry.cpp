@@ -88,31 +88,43 @@ namespace metzler_model {
 
 
 
-    std::vector<double> state_to_vector() const {
-            return {state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_actual,
+    std::vector<double> SteerGeometry::state_to_vector() const {
+            return {state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_angle_on_column,
                     state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle};
         }
 
-    void vector_to_state(const std::vector<double>& vec) {
+    void SteerGeometry::vector_to_state(const std::vector<double>& vec) {
         if (vec.size() != 7) {
             throw std::invalid_argument("Vector size must be 7");
         }
         state_.front_left_steer_angle = vec[0];
         state_.front_right_steer_angle = vec[1];
-        state_.steer_actual = vec[2];
+        state_.steer_angle_on_column = vec[2];
         state_.front_left_slip_angle = vec[3];
         state_.front_right_slip_angle = vec[4];
         state_.rear_left_slip_angle = vec[5];
         state_.rear_right_slip_angle = vec[6];
     }
 
+    double Engine::derivative_steer(double steer_input) const {
+            
+            // 1 rzędowy układ kierowniczy
+            double derivative = (steer_input - state_.steer_actual) / params_.T;
+
+            // TODO : Jakieś filtry górno/dolno przepustowe ? 
+
+            return derivative;
+    }
+
+    void SteerGeometry::update(double steer_input, double dt) {
+            // Calculate the derivative of the steer angle
+            double derivative = derivative_steer(steer_input);  
+            // Update the state using Euler's method
+            state_.steer_angle_on_column += derivative * dt;
+    }
 
 
-
-    
-
+        
 
 
-
-
-}
+} // namespace metzler_model

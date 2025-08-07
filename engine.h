@@ -26,7 +26,7 @@ namespace metzler_model {
         /// Constructor for the Engine class
         /// @param params Engine parameters
         /// @param initial_state Initial state of the engine, default is zero torque
-         Engine(const engine_params& params, const engine_state& initial_state = engine_state{0.0}) {};
+         Engine(const engine_params& params, const engine_state& initial_state = engine_state{0.0}) ;
             
         /// *** Seteers *** ////
 
@@ -79,13 +79,13 @@ namespace metzler_model {
         /// Calculate the derivative of the  acutal torque given by engine  based on the engine parameters and input
         /// @param engine_input Input to the engine in range [-1 , 1 ]
 
-        double engine_torque_derivative( double engine_input ) const {};
+        double engine_torque_derivative( double engine_input ) const ;
 
         /// Update the torque of the engine based on the input and time step
         /// @param engine_input Input to the engine in range [-1 , 1 ]
         /// @param dt Time step for the update
 
-        void update_torque(double engine_input, double dt) {};
+        void update_torque(double engine_input, double dt) ;
 
         /// *** Reset *** ////
 
