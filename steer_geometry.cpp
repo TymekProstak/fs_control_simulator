@@ -10,42 +10,65 @@ namespace metzler_model {
 
     slip_angles SteerGeometry::calculate_slip_angles(double vx, double vy, double yaw_rate) const {
     
-    // Calculate the slip angles based on the vehicle's velocity and yaw rate.
-    
-    slip_angles result;
+        // Calculate the slip angles based on the vehicle's velocity and yaw rate.
+        
+        slip_angles result;
 
-    double lf = params_.lf;
-    double lr = params_.lr;
-    double wf = params_.wheel_distance_front;
-    double wr = params_.wheel_distance_rear;
+        double lf = params_.lf;
+        double lr = params_.lr;
+        double wf = params_.wheel_distance_front;
+        double wr = params_.wheel_distance_rear;
 
-    // Zakładam, że masz w state_ kąty skrętu kół
-    result.rear_left_slip_angle = std::atan2(vy - lr * yaw_rate, vx - yaw_rate * wr / 2.0);
-    result.rear_right_slip_angle = std::atan2(vy - lr * yaw_rate, vx + yaw_rate * wr / 2.0);
+        // Zakładam, że masz w state_ kąty skrętu kół
+        result.rear_left_slip_angle = std::atan2(vy - lr * yaw_rate, vx - yaw_rate * wr / 2.0);
+        result.rear_right_slip_angle = std::atan2(vy - lr * yaw_rate, vx + yaw_rate * wr / 2.0);
 
-    result.front_left_slip_angle = std::atan2(vy + lf * yaw_rate, vx - yaw_rate * wf / 2.0) - state_.front_left_steer_angle;
-    result.front_right_slip_angle = std::atan2(vy + lf * yaw_rate, vx + yaw_rate * wf / 2.0) - state_.front_right_steer_angle;
+        result.front_left_slip_angle = std::atan2(vy + lf * yaw_rate, vx - yaw_rate * wf / 2.0) - state_.front_left_steer_angle;
+        result.front_right_slip_angle = std::atan2(vy + lf * yaw_rate, vx + yaw_rate * wf / 2.0) - state_.front_right_steer_angle;
 
-    // Ogranicz do zakresu [-pi, pi]
-    result.rear_left_slip_angle = std::fmod(result.rear_left_slip_angle + M_PI, 2 * M_PI) - M_PI;
-    result.rear_right_slip_angle = std::fmod(result.rear_right_slip_angle + M_PI, 2 * M_PI) - M_PI;
-    result.front_left_slip_angle = std::fmod(result.front_left_slip_angle + M_PI, 2 * M_PI) - M_PI;
-    result.front_right_slip_angle = std::fmod(result.front_right_slip_angle + M_PI, 2 * M_PI) - M_PI;
+        // Ogranicz do zakresu [-pi, pi]
+        result.rear_left_slip_angle = std::fmod(result.rear_left_slip_angle + M_PI, 2 * M_PI) - M_PI;
+        result.rear_right_slip_angle = std::fmod(result.rear_right_slip_angle + M_PI, 2 * M_PI) - M_PI;
+        result.front_left_slip_angle = std::fmod(result.front_left_slip_angle + M_PI, 2 * M_PI) - M_PI;
+        result.front_right_slip_angle = std::fmod(result.front_right_slip_angle + M_PI, 2 * M_PI) - M_PI;
 
-    return result;
+        return result;
 }
 
      steer_angles SteerGeometry::calculate_steer_angles() const  {
 
-        
-    
 
+        // Calculate the steer angles based on the vehicle's geometry and the actual steering on the steering column.
+        // For now, assuming an ideal Ackerman steering geometry.
+
+        steer_angles result;
+
+        // function calculates the steer angles based on the vehicle's geometry and the actual steering on the steering column.
+        // angle on steering column remains the same 
+
+
+        result.steer_angle_on_column = state_.steer_angle_on_column;
+
+        double turning radius = params_.wheelbase / std::tan(state_.steer_angle_on_column);
+
+        result.front_left_steer_angle = std::atan2( params_.wheelbase, turning radius - params_.wheel_distance_front / 2.0);
+        result.front_right_steer_angle = std::atan2( params_.wheelbase, turning radius + params_.wheel_distance_front / 2.0);
+
+        // Ensure angles are within the range of [-pi, pi]
+        result.front_left_steer_angle = std::fmod(result.front_left_steer_angle + M_PI, 2 * M_PI) - M_PI;
+        result.front_right_steer_angle = std::fmod(result.front_right_steer_angle + M_PI, 2 * M_PI) - M_PI;
+
+        return result;
+
+
+    
 
 
     }
 
 
     void SteerGeometry::calculate_and_set_steer_angles() {
+
         // Calculate the steer angles based on the vehicle's geometry and the actual steering on the steering column.
         // For now, assuming an ideal Ackerman steering geometry.
 
@@ -55,11 +78,32 @@ namespace metzler_model {
 
 
     }
+
     void SteerGeometry::calculate_and_set_slip_angles(double vx, double vy, double yaw_rate) {
         // Calculate the slip angles based on the vehicle's velocity and yaw rate.
 
         slip_angles new_slip_angles = calculate_slip_angles(vx, vy, yaw_rate);
         set_slip_angles(new_slip_angles);
+    }
+
+
+
+    std::vector<double> state_to_vector() const {
+            return {state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_actual,
+                    state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle};
+        }
+
+    void vector_to_state(const std::vector<double>& vec) {
+        if (vec.size() != 7) {
+            throw std::invalid_argument("Vector size must be 7");
+        }
+        state_.front_left_steer_angle = vec[0];
+        state_.front_right_steer_angle = vec[1];
+        state_.steer_actual = vec[2];
+        state_.front_left_slip_angle = vec[3];
+        state_.front_right_slip_angle = vec[4];
+        state_.rear_left_slip_angle = vec[5];
+        state_.rear_right_slip_angle = vec[6];
     }
 
 

@@ -37,7 +37,7 @@ namespace metzler_model {
         double front_left_steer_angle;
         double front_right_steer_angle;
 
-        double steer_actual; // aktualny kąt skrętu na kolumnie kierowniczej
+        double steer_angle_on_column; // aktualny kąt skrętu na kolumnie kierowniczej
 
 
         double front_left_slip_angle; // kąt poślizgu przedniego lewego koła
@@ -57,7 +57,7 @@ namespace metzler_model {
 
         double front_left_steer_angle; // kąt skrętu przedniego lewego koła
         double front_right_steer_angle; // kąt skrętu przedniego prawego koła
-        double steer_actual; // aktualny kąt skrętu na kolumnie kierowniczej
+        double steer_angle_on_column; // aktualny kąt skrętu na kolumnie kierowniczej
     };
 
 
@@ -104,8 +104,8 @@ namespace metzler_model {
             return state_.front_right_steer_angle;
         }
 
-        inline double get_steer_actual() const {
-            return state_.steer_actual;
+        inline double get_steer_angle_on_column() const {
+            return state_.steer_angle_on_column;
         }
 
         inline double get_front_left_slip_angle() const {
@@ -121,6 +121,17 @@ namespace metzler_model {
 
         inline double get_rear_right_slip_angle() const {
             return state_.rear_right_slip_angle;
+        }
+
+        inline steer_angles get_steer_angels() const {
+
+            return  { state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_angle_on_column };
+        }
+
+        inline  slip_angles get_slip_angels() {
+
+
+            return  { state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle };
         }
 
         //////////////////////////////////////////////
@@ -158,8 +169,8 @@ namespace metzler_model {
             state_.front_right_steer_angle = angle;
         }
 
-        inline void set_steer_actual(double angle) {
-            state_.steer_actual = angle;
+        inline void set_steer_on_column(double angle) {
+            state_.steer_angle_on_column = angle;
         }
 
 
@@ -184,27 +195,18 @@ namespace metzler_model {
 
         ////***** Transformacje wektorów i struktur ********////
 
+        /// This function converts the current state of the steer geometry to a vector representation.
+        /// @return A vector containing the current state of the steer geometry.
+        ///
 
-        
+        std::vector<double> state_to_vector() const {} ;
 
+        /// This function converts a vector representation to the current state of the steer geometry.
+        /// @param vec A vector containing the state of the steer geometry.
+        /// @throws std::invalid_argument If the vector size is not equal to 7.
 
+        void vector_to_state(const std::vector<double>& vec) {};
 
-        std::vector<double> state_to_vector() const {
-            return {state_.front_left_steer_angle, state_.front_right_steer_angle, state_.steer_actual,
-                    state_.front_left_slip_angle, state_.front_right_slip_angle, state_.rear_left_slip_angle, state_.rear_right_slip_angle};
-        }
-        void vector_to_state(const std::vector<double>& vec) {
-            if (vec.size() != 7) {
-                throw std::invalid_argument("Vector size must be 7");
-            }
-            state_.front_left_steer_angle = vec[0];
-            state_.front_right_steer_angle = vec[1];
-            state_.steer_actual = vec[2];
-            state_.front_left_slip_angle = vec[3];
-            state_.front_right_slip_angle = vec[4];
-            state_.rear_left_slip_angle = vec[5];
-            state_.rear_right_slip_angle = vec[6];
-        }
 
         //////////////////////////////////////////////
 
