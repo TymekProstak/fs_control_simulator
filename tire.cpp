@@ -87,6 +87,7 @@ namespace metzler_model {
 
         // Normalize the slip angle to the range [-pi, pi]
         slip_angle = std::fmod(slip_angle + M_PI, 2 * M_PI) - M_PI;
+        slip_angle *= -1; // flip the sign to match the convention used in the SAE 
 
         return slip_angle;
 
@@ -157,25 +158,3 @@ namespace metzler_model {
 
 
 } // namespace metzler_model
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-}

@@ -40,7 +40,7 @@ namespace metzler_model {
         double h_cg;
         double lf;
         double lr;
-        double gravity = 9.81;
+        double gravity ;
         double h_roll_f;
         double h_roll_r;
         double front_roll_stiffness;
@@ -56,7 +56,7 @@ namespace metzler_model {
      * @param rear_left_force Siła normalna na tylnym lewym kole
      * @param rear_right_force Siła normalna na tylnym prawym kole
      */
-    struct normal_model_forces {
+    struct normal_model_forces_output {
         double front_left_force;
         double front_right_force;
         double rear_left_force;
@@ -86,11 +86,13 @@ namespace metzler_model {
          * @param ay Przyspieszenie poprzeczne pojazdu [m/s^2] w Inertial Frame
          * @return Struktura z siłami normalnymi na kołach
          */
-        normal_model_forces calculate_normal_forces(double vx = 0.0, double vy = 0.0, double ax = 0.0, double ay = 0.0) const;
+        normal_model_forces_output calculate_normal_forces(double vx = 0.0, double vy = 0.0, double ax = 0.0, double ay = 0.0) const;
 
 
 
         void calculate_and_set_normal_forces(double vx = 0.0, double vy = 0.0, double ax = 0.0, double ay = 0.0) ;
+
+        normal_model_forces_output calculate_set_and_return_normal_forces(double vx = 0.0, double vy = 0.0, double ax = 0.0, double ay = 0.0) ;
             
         
         /**
@@ -103,7 +105,7 @@ namespace metzler_model {
         /**
          * @brief Zwraca aktualne siły normalne na kołach.
          */
-        inline normal_model_forces get_forces() const {
+        inline normal_model_forces_output get_forces() const {
             return forces_;
         }
 
@@ -144,7 +146,7 @@ namespace metzler_model {
          * @brief Ustawia nowe siły normalne na kołach.
          * @param new_forces Nowe siły
          */
-        inline void set_forces(const normal_model_forces& new_forces) {
+        inline void set_forces(const normal_model_forces_output& new_forces) {
             forces_ = new_forces;
         }
 
@@ -201,7 +203,7 @@ namespace metzler_model {
 
     private:
         normal_model_forces_params params_; ///< Parametry modelu sił normalnych
-        normal_model_forces forces_;        ///< Aktualne siły normalne na kołach
+        normal_model_forces_output forces_;        ///< Aktualne siły normalne na kołach
     };
 
 } // namespace metzler_model

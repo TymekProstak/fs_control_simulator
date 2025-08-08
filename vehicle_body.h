@@ -32,118 +32,114 @@ namespace metzler_model {
     };
 
     class VehicleBody {
-    public:
-        VehicleBody(const vehicle_body_params& params, const vehicle_body_state& initial_state = vehicle_body_state{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0})
-            : params_(params), state_(initial_state) {}
+        public:
 
-        vehicle_body_state get_state() const { return state_; }
+            // Constructor 
+            VehicleBody(const vehicle_body_params& params, const vehicle_body_state& initial_state = vehicle_body_state{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+              
 
-        inline void set_state(const vehicle_body_state& new_state) {
-            state_ = new_state;
-        }
-        inline void set_params(const vehicle_body_params& new_params) {
-            params_ = new_params;
-        }
-        inline void set_x(double new_x) {
-            state_.x = new_x;
-        }
-        
-        inline void set_y(double new_y) {
-            state_.y = new_y;
-        }
-        inline void set_yaw(double new_yaw) {
-            state_.yaw = new_yaw;
-        }
-
-        inline void set_vx(double new_vx) {
-            state_.vx = new_vx;
-        }
-
-        inline void set_vy(double new_vy) {
-            state_.vy = new_vy;
-        }
-
-        inline void set_yaw_rate(double new_yaw_rate) {
-            state_.yaw_rate = new_yaw_rate;
-        }
-
-        inline void set_ax(double new_ax) {
-            state_.ax = new_ax;
-        }
-
-        inline void set_ay(double new_ay) {
-            state_.ay = new_ay;
-        }
-
-        inline double get_x() const {
-            return state_.x;
-        }
-
-        inline double get_y() const {
-            return state_.y;
-        }
-
-        inline double get_yaw() const {
-            return state_.yaw;
-        }
-        inline double get_vx() const {
-            return state_.vx;
-        }
-
-        inline double get_vy() const {
-            return state_.vy;
-        }
-
-        inline double get_yaw_rate() const {
-            return state_.yaw_rate;
-        }
-
-        inline double get_ax() const {
-            return state_.ax;
-        }
-
-        inline double get_ay() const {
-            return state_.ay;
-        }
-        inline void reset(const vehicle_body_state& initial_state = vehicle_body_state{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}) {
-            state_ = initial_state;
-        }
-
-        void update_state(const forces_sumed& forces, double dt);
-
-
-        // do cpp
-
-        void update_state(const forces_sumed& forces, double dt) {
-            // Update the state based on the forces and time step
-           
-
-            // NIE WOLNO ZMIEŃAĆ KOLEJNOŚCI OPERACJI, bo to jest układ równań różniczkowych
-
-
-            state_.x += state_.vx * dt;
-            state_.y += state_.vy * dt;
-
-            state_.yaw += state_.yaw_rate * dt;
-
-
-            state_.ax = (forces.fx - forces.fy * state_.vy) / params_.mass;  // longitudinal acceleration in INERTIAL
-            state_.ay = (forces.fy + forces.fx * state_.vx) / params_.mass;  // lateral acceleration in INERTIAL
-
-            double vx_dot =  state_.ax + state_.vy * state_.yaw_rate ;  // longitudinal acceleration in VEHICLE frame
-            double vy_dot = state_.ay - state_.vx * state_.yaw_rate;  // lateral acceleration in VEHICLE frame
-
-            state_.vx += vx_dot * dt;  // Update longitudinal velocity in VEHICLE frame
-            state_.vy += vy_dot * dt;  // Update lateral velocity in VEHICLE frame
+            /////////////////**** Setters ******* /////////////////////////////////////
             
-            // Update yaw rate based on the torque and inertia
+            inline void set_state(const vehicle_body_state& new_state) {
+                state_ = new_state;
+            }
+            inline void set_params(const vehicle_body_params& new_params) {
+                params_ = new_params;
+            }
+            inline void set_x(double new_x) {
+                state_.x = new_x;
+            }
+            
+            inline void set_y(double new_y) {
+                state_.y = new_y;
+            }
+            inline void set_yaw(double new_yaw) {
+                state_.yaw = new_yaw;
+            }
 
-            state_.yaw_rate = (forces.torque / params_.inertia);
+            inline void set_vx(double new_vx) {
+                state_.vx = new_vx;
+            }
 
-          
-        }
+            inline void set_vy(double new_vy) {
+                state_.vy = new_vy;
+            }
 
-        //
+            inline void set_yaw_rate(double new_yaw_rate) {
+                state_.yaw_rate = new_yaw_rate;
+            }
+
+            inline void set_ax(double new_ax) {
+                state_.ax = new_ax;
+            }
+
+            inline void set_ay(double new_ay) {
+                state_.ay = new_ay;
+            }
+            ///////////////////////////////////////////////////////////////////////
+
+
+            //////////  ****** Getters ******* /////////////////////////////////////
+
+            inline vehicle_body_state get_state() const {
+                return state_;
+            }
+
+            inline vehicle_body_params get_params() const {
+                return params_;
+            }
+
+            inline double get_x() const {
+                return state_.x;
+            }
+
+            inline double get_y() const {
+                return state_.y;
+            }
+
+            inline double get_yaw() const {
+                return state_.yaw;
+            }
+            inline double get_vx() const {
+                return state_.vx;
+            }
+
+            inline double get_vy() const {
+                return state_.vy;
+            }
+
+            inline double get_yaw_rate() const {
+                return state_.yaw_rate;
+            }
+
+            inline double get_ax() const {
+                return state_.ax;
+            }
+
+            inline double get_ay() const {
+                return state_.ay;
+            }
+
+            //////////////////////////////////////////////////////////////////////////////////////
+            
+            ///////  **** Dynamics  **** /////////////////
+
+            void update_state(const forces_sumed& forces, double dt);
+
+
+            //////////////////////////////////////////////////
+
+            inline void reset(){
+
+                state_ = vehicle_body_state{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+            }
+
+            //// ********** vec to struct transforms ********* ////////////////////////////
+
+            std::vector<double> state_to_vector() const ;
+
+            void vector_to_state(const std::vector<double>& vec) ;
+            
 
         
 
@@ -155,7 +151,7 @@ namespace metzler_model {
     };
 
 
-}
+} // namespace metzler_model
 
 
 #endif // VEHICLE_COG_H

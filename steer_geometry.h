@@ -85,20 +85,7 @@ namespace metzler_model {
             return state_.steer_angle_on_column;
         }
 
-        inline double get_front_left_slip_angle() const {
-            return state_.front_left_slip_angle;
-        }     
-        inline double get_front_right_slip_angle() const {
-            return state_.front_right_slip_angle;
-        }
-
-        inline double get_rear_left_slip_angle() const {
-            return state_.rear_left_slip_angle;
-        }
-
-        inline double get_rear_right_slip_angle() const {
-            return state_.rear_right_slip_angle;
-        }
+       
 
         inline steer_angles get_steer_angels() const {
 
@@ -119,7 +106,7 @@ namespace metzler_model {
         inline void set_steer_angles(const steer_angles& new_steer_angles) {
             state_.front_left_steer_angle = new_steer_angles.front_left_steer_angle;
             state_.front_right_steer_angle = new_steer_angles.front_right_steer_angle;
-            state_.steer_actual = new_steer_angles.steer_actual;
+            state_.steer_angle_on_column = new_steer_angles.steer_angle_on_column;
         }
 
 
@@ -164,8 +151,10 @@ namespace metzler_model {
 
 
 
-        //  void non reutirng, changing class elements function that  Calculate steer angles based on link geometry -> for now assuming an ideal ackerman steering geometry
+        //  void non returning, changing class elements function that  Calculate steer angles based on link geometry -> for now assuming an ideal ackerman steering geometry
          void calculate_and_set_steer_angles() ;
+
+         steer_angles calculate_set_and_return_steer_angles() ;
 
 
         /// This function calculates the derivative of the steer angle based on the input steering angle.

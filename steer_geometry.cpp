@@ -22,10 +22,10 @@ namespace metzler_model {
 
         result.steer_angle_on_column = state_.steer_angle_on_column;
 
-        double turning radius = params_.wheelbase / std::tan(state_.steer_angle_on_column);
+        double turning_radius = params_.wheelbase / std::tan(state_.steer_angle_on_column);
 
-        result.front_left_steer_angle = std::atan2( params_.wheelbase, turning radius - params_.wheel_distance_front / 2.0);
-        result.front_right_steer_angle = std::atan2( params_.wheelbase, turning radius + params_.wheel_distance_front / 2.0);
+        result.front_left_steer_angle = std::atan2( params_.wheelbase, turning_radius - params_.wheel_distance_front / 2.0);
+        result.front_right_steer_angle = std::atan2( params_.wheelbase, turning_radius + params_.wheel_distance_front / 2.0);
 
         // Ensure angles are within the range of [-pi, pi]
         result.front_left_steer_angle = std::fmod(result.front_left_steer_angle + M_PI, 2 * M_PI) - M_PI;
@@ -64,10 +64,18 @@ namespace metzler_model {
         
     }
 
-    double Engine::derivative_steer(double steer_input) const {
-            
+    steer_angles SteerGeometry::calculate_set_and_return_steer_angles() {
+
+        steer_angles new_steer_angles = calculate_steer_angles();
+        set_steer_angles(new_steer_angles);
+        return new_steer_angles;
+
+    }
+
+    double SteerGeometry::derivative_steer(double steer_input) const {
+
             // 1 rzędowy układ kierowniczy
-            double derivative = (steer_input - state_.steer_actual) / params_.T;
+            double derivative = (steer_input - state_.steer_angle_on_column) / params_.T;
 
             // TODO : Jakieś filtry górno/dolno przepustowe ? 
 

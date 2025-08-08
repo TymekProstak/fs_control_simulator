@@ -7,19 +7,19 @@ namespace metzler_model {
 NormalModelForces::NormalModelForces(const normal_model_forces_params& params)
     : params_(params), forces_{} {}
 
-normal_model_forces NormalModelForces::calculate_normal_forces(double vx, double vy, double ax, double ay) const {
+normal_model_forces_output NormalModelForces::calculate_normal_forces(double vx, double vy, double ax, double ay) const {
     // Calculate the normal forces acting on each wheel
-    normal_model_forces forces;
+    normal_model_forces_output forces;
 
 
     /// for model of finding the distribution of normal forces refrence to  https://kktse.github.io/jekyll/update/2021/05/12/simplied-lateral-load-transfer-analysis.html ///
 
     ///***************///// STRUKTURY POMOCNICZE ///////*****************///
-    normal_model_forces static_forces;
-    normal_model_forces longitudal_mass_transfer_forces;
-    normal_model_forces aerodynamic_forces;
-    normal_model_forces link_load_transfer_forces;
-    normal_model_forces roll_stiffness_load_transfer;
+    normal_model_forces_output static_forces;
+    normal_model_forces_output longitudal_mass_transfer_forces;
+    normal_model_forces_output aerodynamic_forces;
+    normal_model_forces_output link_load_transfer_forces;
+    normal_model_forces_output roll_stiffness_load_transfer;
 
     double mass = params_.mass;
     double gravity = params_.gravity;
@@ -48,7 +48,7 @@ normal_model_forces NormalModelForces::calculate_normal_forces(double vx, double
 
     double downforce_coefficient = params_.downforce_coefficient;
     double drag_coefficient = params_.drag_coefficient;
-    double pressure_center_height = params_.pressure_center_height
+    double pressure_center_height = params_.pressure_center_height;
 
     ///***************///// STATIC FORCES ///////*****************///
     static_forces.front_left_force = 0.5 * mass * gravity * (lf / (lf + lr));
@@ -111,6 +111,11 @@ normal_model_forces NormalModelForces::calculate_normal_forces(double vx, double
 
 void NormalModelForces::calculate_and_set_normal_forces(double vx, double vy, double ax, double ay) {
     forces_ = calculate_normal_forces(vx, vy, ax, ay);
+}
+
+normal_model_forces_output NormalModelForces::calculate_set_and_return_normal_forces(double vx, double vy, double ax, double ay) {
+    forces_ = calculate_normal_forces(vx, vy, ax, ay);
+    return forces_;
 }
 
 } // namespace
