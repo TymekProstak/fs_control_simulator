@@ -269,6 +269,52 @@ namespace metzler_model {
          */
         void calculate_and_set_RR_tire_torque(const tire_force_model_output_in_vehicle_frame& new_force);
 
+
+
+        
+        /**
+         * @brief Calculate, set, and return aerodynamic downforce.
+         * @param vx Longitudinal velocity [m/s].
+         * @return Downforce [N].
+         */
+        double calculate_set_and_return_aero_downforce(double vx = 0.0);
+
+        /**
+         * @brief Calculate, set, and return aerodynamic drag.
+         * @param vx Longitudinal velocity [m/s].
+         * @return Drag [N].
+         */
+        double calculate_set_and_return_aero_drag(double vx = 0.0);
+
+        /**
+         * @brief Calculate, set, and return front left tire torque.
+         * @param new_force Tire force structure.
+         * @return Torque [Nm].
+         */
+        double calculate_set_and_return_FL_tire_torque(const tire_force_model_output_in_vehicle_frame& new_force);
+
+        /**
+         * @brief Calculate, set, and return front right tire torque.
+         * @param new_force Tire force structure.
+         * @return Torque [Nm].
+         */
+        double calculate_set_and_return_FR_tire_torque(const tire_force_model_output_in_vehicle_frame& new_force);
+
+        /**
+         * @brief Calculate, set, and return rear left tire torque.
+         * @param new_force Tire force structure.
+         * @return Torque [Nm].
+         */
+        double calculate_set_and_return_RL_tire_torque(const tire_force_model_output_in_vehicle_frame& new_force);
+
+        /**
+         * @brief Calculate, set, and return rear right tire torque.
+         * @param new_force Tire force structure.
+         * @return Torque [Nm].
+         */
+        double calculate_set_and_return_RR_tire_torque(const tire_force_model_output_in_vehicle_frame& new_force);
+
+
         //////// Output Function //////////////////
 
         /**
@@ -297,6 +343,13 @@ namespace metzler_model {
          * @param RR_force Rear right tire force.
          */
         void calculate_and_set_forces_sumed(
+            double vx = 0.0,
+            tire_force_model_output_in_vehicle_frame& FL_force,
+            tire_force_model_output_in_vehicle_frame& FR_force,
+            tire_force_model_output_in_vehicle_frame& RL_force,
+            tire_force_model_output_in_vehicle_frame& RR_force
+        );
+        forces_sumed calculate_set_and_return_forces_sumed(
             double vx = 0.0,
             tire_force_model_output_in_vehicle_frame& FL_force,
             tire_force_model_output_in_vehicle_frame& FR_force,
