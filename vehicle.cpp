@@ -20,7 +20,33 @@ namespace metzler_model {
               tire_RL(params_initializer.get_tire_params()),
               tire_RR(params_initializer.get_tire_params()),
               normal_forces(params_initializer.get_normal_model_forces_params())
-        {}
+    {}
+
+    Vehicle::Vehicle(const Vehicle& other)
+    : current_state(other.current_state),
+      current_input(other.current_input),
+      current_slips_and_forces(other.current_slips_and_forces),
+      vehicle_body(other.vehicle_body),
+      steer_geometry(other.steer_geometry),
+      tire_force_model_FL(other.tire_force_model_FL),
+      tire_force_model_FR(other.tire_force_model_FR),
+      tire_force_model_RL(other.tire_force_model_RL),
+      tire_force_model_RR(other.tire_force_model_RR),
+      engine_FL(other.engine_FL),
+      engine_FR(other.engine_FR),
+      engine_RL(other.engine_RL),
+      engine_RR(other.engine_RR),
+      tire_FL(other.tire_FL),
+      tire_FR(other.tire_FR),
+      tire_RL(other.tire_RL),
+      tire_RR(other.tire_RR),
+      normal_forces(other.normal_forces),
+      forces_sumed(other.forces_sumed)
+    {}
+
+    
+
+    
 
     void Vehicle::prepare_system(){
 
@@ -103,13 +129,58 @@ namespace metzler_model {
 
     void Vehicle::update_vehicle_state(vehicle_input input,double dt) {
 
+        // Prepare system 
+        prepare_system();
+        // Update the vehicle body state based on the calculated forces
+        vehicle_body.update_state(forces_sumed, dt);
+        
+        // For updating angular velocity of tires longitudal forces are needed to know
+        double FL_longitudal_force = tire_force_model_FL.get_longitudinal_force();
+        double FR_longitudal_force = tire_force_model_FR.get_longitudinal_force();
+        double RL_longitudal_force = tire_force_model_RL.get_longitudinal_force();
+        double RR_longitudal_force = tire_force_model_RR.get_longitudinal_force();
 
+        // For updating angular velocity of tires 
+        double FL_torque = engine_FL.get_torque();
+        double FR_torque = engine_FR.get_torque();
+        double RL_torque = engine_RL.get_torque();
+        double RR_torque = engine_RR.get_torque();
 
+        // Update tires angular velocity based on engine torque and tractive force
+        tire_FL.update_omega(FL_torque, FL_longitudal_force, dt);
+        tire_FR.update_omega(FR_torque, FR_longitudal_force, dt);
+        tire_RL.update_omega(RL_torque, RL_longitudal_force, dt);
+        tire_RR.update_omega(RR_torque, RR_longitudal_force, dt);
+
+        // Update steer angle on column
+        steer_geometry.update( input.steer, dt);
+
+        // Update torque outputs form engines
+        engine_FL.update_torque(input.throttle, dt);
+        engine_FR.update_torque(input.throttle, dt);
+        engine_RL.update_torque(input.throttle, dt);
+        engine_RR.update_torque(input.throttle, dt);
 
     }
 
     void Vehicle::RK4_integration_step(vehicle_input current_input, double dt) {
-    // Implement the RK4 integration step here
+
+
+    // Prepering four objects for calcuaitng for differentials 
+
+    Vehicle k1(*this);
+    
+
+    
+    k1.update_vehicle_state(current_input, dt/2);
+
+    Vehicle k2(k1);
+
+    
+
+    
+    ///
+
     
 
 

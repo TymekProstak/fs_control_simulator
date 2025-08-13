@@ -146,7 +146,17 @@ class Vehicle{
          * @param params_initializer Reference to a ParamsInitializer object providing all necessary parameters.
          */
         Vehicle(ParamsInitializer& params_initializer);
-            
+
+        /**
+         * @brief Copying constructor.
+         * @param other Reference to another Vehicle object.
+         */
+        Vehicle(const Vehicle& other);
+
+
+        void add_other_state_to_this(const Vehicle& other);
+        void subtract_this_from_other_state( Vehicle& other) const ;
+        void subtract_other_state_from_this( const Vehicle& other);
 
         // ----------- Setters ------------
 
