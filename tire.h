@@ -126,6 +126,15 @@ namespace metzler_model {
             void calculate_and_set_slip_ratio(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0);
 
             /**
+             * @brief Calculates, sets, and returns the slip ratio of the tire.
+             * @param vx [m/s] Longitudinal velocity of the vehicle.
+             * @param vy [m/s] Lateral velocity of the vehicle.
+             * @param yaw_rate [rad/s] Yaw rate of the vehicle.
+             * @return Slip ratio (dimensionless).
+             */
+            double calculate_set_and_return_slip_ratio( double vx = 0.0 , double vy = 0.0, double yaw_rate = 0.0) const ;
+
+            /**
              * @brief Calculates the slip angle of the tire.
              * @param vx [m/s] Longitudinal velocity of the vehicle.
              * @param vy [m/s] Lateral velocity of the vehicle.
@@ -145,12 +154,22 @@ namespace metzler_model {
             void calculate_and_set_slip_angle(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0);
 
             /**
+             * @brief Calculates the slip angle and returns it and set it inside the state of the class.
+             * @param vx [m/s] Longitudinal velocity of the vehicle.
+             * @param vy [m/s] Lateral velocity of the vehicle.
+             * @param yaw_rate [rad/s] Yaw rate of the vehicle.
+             * @return Slip angle [rad].
+            */
+            
+            double calculate_set_and_return_slip_angle(double vx = 0.0, double vy = 0.0, double yaw_rate = 0.0);
+
+
+            /**
              * @brief Calculates the derivative of the tire's angular velocity.
              * @param engine_torque [Nm] Torque applied by the engine.
              * @param tractive_force [N] Tractive force at the tire-road interface.
              * @return Angular acceleration [rad/s^2].
              */
-
             double calculate_omega_derivative(double engine_torque = 0.0, double tractive_force = 0.0) const;
 
             /**
@@ -184,12 +203,10 @@ namespace metzler_model {
             tire_params params_;
 
 
-
-    };
-
+        };
         
 
-} // namespace metzler_model
 
+} // namespace metzler_model
 
 #endif // TIRE_H

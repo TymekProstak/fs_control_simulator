@@ -145,23 +145,8 @@ class Vehicle{
          * @brief Constructor initializing all subsystems using a parameter initializer.
          * @param params_initializer Reference to a ParamsInitializer object providing all necessary parameters.
          */
-        Vehicle(ParamsInitializer& params_initializer)
-            : vehicle_body(params_initializer.get_vehicle_body_params()),
-              steer_geometry(params_initializer.get_steer_geometry_params()),
-              tire_force_model_FL(params_initializer.get_tire_force_model_params()),
-              tire_force_model_FR(params_initializer.get_tire_force_model_params()),
-              tire_force_model_RL(params_initializer.get_tire_force_model_params()),
-              tire_force_model_RR(params_initializer.get_tire_force_model_params()),
-              engine_FL(params_initializer.get_engine_params()),
-              engine_FR(params_initializer.get_engine_params()),
-              engine_RL(params_initializer.get_engine_params()),
-              engine_RR(params_initializer.get_engine_params()),
-              tire_FL(params_initializer.get_tire_params()),
-              tire_FR(params_initializer.get_tire_params()),
-              tire_RL(params_initializer.get_tire_params()),
-              tire_RR(params_initializer.get_tire_params()),
-              normal_forces(params_initializer.get_normal_model_forces_params())
-        {}
+        Vehicle(ParamsInitializer& params_initializer);
+            
 
         // ----------- Setters ------------
 

@@ -116,6 +116,7 @@ namespace metzler_model {
         double slip_ratio = calculate_slip_ratio(vx, vy, yaw_rate);
         set_slip_ratio(slip_ratio);
     }
+    
 
     double Tire::calculate_omega_derivative(double engine_torque, double tractive_force) const {
         /**
