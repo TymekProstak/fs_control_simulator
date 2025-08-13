@@ -314,6 +314,8 @@ class Vehicle{
         Tire tire_RR;
 
         NormalModelForces normal_forces;
+
+        Forces forces_sumed;
 };
 
 } // namespace

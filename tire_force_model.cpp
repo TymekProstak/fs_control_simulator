@@ -57,10 +57,12 @@ void TireForceModel::calculate_and_set_tire_force(double slip_ratio, double slip
 
 void TireForceModel::calculate_and_set_tire_force_in_vehicle_frame(double slip_ratio, double slip_angle, double normal_force, double steer_angle) {
     output_in_vehicle_frame_ = calculate_tire_force_in_vehicle_frame(slip_ratio, slip_angle, normal_force, steer_angle);
+    input_ = {slip_ratio, slip_angle, normal_force, steer_angle};
 }
 
 void TireForceModel::calculate_and_set_tire_force_in_vehicle_frame(const tire_force_model_input& input) {
     output_in_vehicle_frame_ = calculate_tire_force_in_vehicle_frame(input);
+    input_ = input;
 }
 
 tire_force_model_output TireForceModel::calculate_set_and_return_tire_force(const tire_force_model_input& input) {
@@ -77,11 +79,13 @@ tire_force_model_output TireForceModel::calculate_set_and_return_tire_force(doub
 
 tire_force_model_output_in_vehicle_frame TireForceModel::calculate_set_and_return_tire_force_in_vehicle_frame(const tire_force_model_input& input) {
     output_in_vehicle_frame_ = calculate_tire_force_in_vehicle_frame(input);
+    input_ = input;
     return output_in_vehicle_frame_;
 }
 
 tire_force_model_output_in_vehicle_frame TireForceModel::calculate_set_and_return_tire_force_in_vehicle_frame(double slip_ratio, double slip_angle, double normal_force, double steer_angle) {
     output_in_vehicle_frame_ = calculate_tire_force_in_vehicle_frame(slip_ratio, slip_angle, normal_force, steer_angle);
+    input_ = {slip_ratio, slip_angle, normal_force, steer_angle};
     return output_in_vehicle_frame_;
 }
 

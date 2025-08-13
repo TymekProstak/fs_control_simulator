@@ -49,6 +49,10 @@ namespace metzler_model {
         //** Normal Forces - depending on kinematics of vehicle body due to load transfer and areo forces **///////////////
 
         normal_model_forces_output = normal_forces.calculate_set_and_return_normal_forces( vx, vy, ax, ay);
+        double front_left_normal_force = normal_model_forces_output.front_left_force;
+        double front_right_normal_force = normal_model_forces_output.front_right_force;
+        double rear_left_normal_force = normal_model_forces_output.rear_left_force;
+        double rear_right_normal_force = normal_model_forces_output.rear_right_force;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -72,7 +76,27 @@ namespace metzler_model {
 
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+        /// Now calculating lateral and longitudal forces from Tires using friction model ///////////////////////////////
+
+        tire_force_model_output_in_vehicle_frame output_FL = tire_force_model_FL.calculate_set_and_return_tire_force_in_vehicle_frame(front_left_slip_ratio, front_left_slip_angle, front_left_normal_force, front_left_steer_angle);
+        tire_force_model_output_in_vehicle_frame output_FR = tire_force_model_FR.calculate_set_and_return_tire_force_in_vehicle_frame(front_right_slip_ratio, front_right_slip_angle, front_right_normal_force, front_right_steer_angle);
+        tire_force_model_output_in_vehicle_frame output_RL = tire_force_model_RL.calculate_set_and_return_tire_force_in_vehicle_frame(rear_left_slip_ratio, rear_left_slip_angle, rear_left_normal_force, 0.0);
+        tire_force_model_output_in_vehicle_frame output_RR = tire_force_model_RR.calculate_set_and_return_tire_force_in_vehicle_frame(rear_right_slip_ratio, rear_right_slip_angle, rear_right_normal_force, 0.0);
+
+
+        tire_force_model_output output_FL_tire_frame = tire_force_model_FL.calculate_set_and_return_tire_force(front_left_slip_ratio, front_left_slip_angle, front_left_normal_force, front_left_steer_angle); 
+        tire_force_model_output output_FR_tire_frame = tire_force_model_FR.calculate_set_and_return_tire_force(front_right_slip_ratio, front_right_slip_angle, front_right_normal_force, front_right_steer_angle);
+        tire_force_model_output output_RL_tire_frame = tire_force_model_RL.calculate_set_and_return_tire_force(rear_left_slip_ratio, rear_left_slip_angle, rear_left_normal_force, 0.0);
+        tire_force_model_output output_RR_tire_frame = tire_force_model_RR.calculate_set_and_return_tire_force(rear_right_slip_ratio, rear_right_slip_angle, rear_right_normal_force, 0.0);
         
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // Now we can set all the forces and torqes acting on vehicle body -> using object forces_sumed that is in instacne of Forces class for holding summed forces/torqes
+
+        forces_sumed.calculate_and_set_forces_sumed( vx , output_FL, output_FR , output_RL, output_RR);
+
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     }
 
