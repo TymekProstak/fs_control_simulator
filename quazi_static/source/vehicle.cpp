@@ -44,9 +44,106 @@ namespace metzler_model {
       forces_sumed(other.forces_sumed)
     {}
 
-    
 
-    
+    void Vehicle::add_other_state_to_this(const vehicle_state& other) {
+      current_state.x += other.x;
+      current_state.y += other.y;
+      current_state.yaw += other.yaw;
+      current_state.vx += other.vx;
+      current_state.vy += other.vy;
+      current_state.yaw_rate += other.yaw_rate;
+      current_state.ax += other.ax;
+      current_state.ay += other.ay;
+      current_state.torque_FL += other.torque_FL;
+      current_state.torque_FR += other.torque_FR;
+      current_state.torque_RL += other.torque_RL;
+      current_state.torque_RR += other.torque_RR;
+      current_state.steer_angle_on_column += other.steer_angle_on_column;
+      current_state.omega_FL += other.omega_FL;
+      current_state.omega_FR += other.omega_FR;
+      current_state.omega_RL += other.omega_RL;
+      current_state.omega_RR += other.omega_RR;
+    }
+    void Vehicle::add_this_state_to_other(vehicle_state& other) const {
+
+      other.x += current_state.x;
+      other.y += current_state.y;
+      other.yaw += current_state.yaw;
+      other.vx += current_state.vx;
+      other.vy += current_state.vy;
+      other.yaw_rate += current_state.yaw_rate;
+      other.ax += current_state.ax;
+      other.ay += current_state.ay;
+      other.torque_FL += current_state.torque_FL;
+      other.torque_FR += current_state.torque_FR;
+      other.torque_RL += current_state.torque_RL;
+      other.torque_RR += current_state.torque_RR;
+      other.steer_angle_on_column += current_state.steer_angle_on_column;
+      other.omega_FL += current_state.omega_FL;
+      other.omega_FR += current_state.omega_FR;
+      other.omega_RL += current_state.omega_RL;
+      other.omega_RR += current_state.omega_RR;
+      
+
+    }
+
+    void Vehicle::subtract_other_state_from_this(const vehicle_state& other) {
+      current_state.x -= other.x;
+      current_state.y -= other.y;
+      current_state.yaw -= other.yaw;
+      current_state.vx -= other.vx;
+      current_state.vy -= other.vy;
+      current_state.yaw_rate -= other.yaw_rate;
+      current_state.ax -= other.ax;
+      current_state.ay -= other.ay;
+      current_state.torque_FL -= other.torque_FL;
+      current_state.torque_FR -= other.torque_FR;
+      current_state.torque_RL -= other.torque_RL;
+      current_state.torque_RR -= other.torque_RR;
+      current_state.steer_angle_on_column -= other.steer_angle_on_column;
+      current_state.omega_FL -= other.omega_FL;
+      current_state.omega_FR -= other.omega_FR;
+      current_state.omega_RL -= other.omega_RL;
+      current_state.omega_RR -= other.omega_RR;
+    }
+    void Vehicle::subtract_this_state_from_other(vehicle_state& other) const {
+      other.x -= current_state.x;
+      other.y -= current_state.y;
+      other.yaw -= current_state.yaw;
+      other.vx -= current_state.vx;
+      other.vy -= current_state.vy;
+      other.yaw_rate -= current_state.yaw_rate;
+      other.ax -= current_state.ax;
+      other.ay -= current_state.ay;
+      other.torque_FL -= current_state.torque_FL;
+      other.torque_FR -= current_state.torque_FR;
+      other.torque_RL -= current_state.torque_RL;
+      other.torque_RR -= current_state.torque_RR;
+      other.steer_angle_on_column -= current_state.steer_angle_on_column;
+      other.omega_FL -= current_state.omega_FL;
+      other.omega_FR -= current_state.omega_FR;
+      other.omega_RL -= current_state.omega_RL;
+      other.omega_RR -= current_state.omega_RR;
+    }
+    void Vehicle::multiply_state_with_scalar(double scalar) {
+      current_state.x *= scalar;
+      current_state.y *= scalar;
+      current_state.yaw *= scalar;
+      current_state.vx *= scalar;
+      current_state.vy *= scalar;
+      current_state.yaw_rate *= scalar;
+      current_state.ax *= scalar;
+      current_state.ay *= scalar;
+      current_state.torque_FL *= scalar;
+      current_state.torque_FR *= scalar;
+      current_state.torque_RL *= scalar;
+      current_state.torque_RR *= scalar;
+      current_state.steer_angle_on_column *= scalar;
+      current_state.omega_FL *= scalar;
+      current_state.omega_FR *= scalar;
+      current_state.omega_RL *= scalar;
+      current_state.omega_RR *= scalar;
+    }
 
     void Vehicle::prepare_system(){
 
@@ -162,23 +259,42 @@ namespace metzler_model {
         engine_RR.update_torque(input.throttle, dt);
 
     }
+    vehicle_state Vehicle::differential_step_time_dt(vehicle_input current_input, double dt) const {
+
+      Vehicle temp_vehicle(*this);
+
+      temp_vehicle.update_vehicle_state(current_input, dt);
+
+      return this->subtract_this_state_from_other(temp_vehicle.current_state);
+
+    }
 
     void Vehicle::RK4_integration_step(vehicle_input current_input, double dt) {
 
 
     // Prepering four objects for calcuaitng for differentials 
 
-    Vehicle k1(*this);
-    
+    Vehicle vehicle_temp(*this); // vehicle to be used as a 
 
-    
-    k1.update_vehicle_state(current_input, dt/2);
+    // Step 1 : calculating derivative (k1) in starting state 
 
-    Vehicle k2(k1);
+    vehicle_state k1 = this->differential_step_time_dt(vehicle_temp.current_state, dt);
 
     
 
-    
+    // now i am in state 2 -> after updating with k1 derivative through dt/2
+ 
+    vehicle_temp.update_vehicle_state(current_input, dt/2);
+
+    vehicle_state k2 = vehicle_temp.differential_step_time_dt(vehicle_temp.current_state, dt);
+
+
+    vehicle_temp.update_vehicle_state(current_input, dt);
+    vehicle_state k3 = differential_step_time_dt(vehicle_temp.current_state, dt);
+
+    vehicle_temp.update_vehicle_state(current_input, dt);
+    vehicle_state k4 = differential_step_time_dt(vehicle_temp.current_state, dt);
+
     ///
 
     

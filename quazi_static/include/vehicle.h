@@ -53,8 +53,6 @@ struct vehicle_state{
     double torque_RL;
     double torque_RR;
     double steer_angle_on_column;
-    double front_left_steer_angle;
-    double front_right_steer_angle;
     double omega_FL;
     double omega_FR;
     double omega_RL;
@@ -154,9 +152,14 @@ class Vehicle{
         Vehicle(const Vehicle& other);
 
 
-        void add_other_state_to_this(const Vehicle& other);
-        void subtract_this_from_other_state( Vehicle& other) const ;
-        void subtract_other_state_from_this( const Vehicle& other);
+        void add_other_state_to_this( const vehicle_state& other );
+        void add_this_state_to_other( vehicle_state& other ) const;
+
+        void subtract_other_state_from_this( const vehicle_state& other );
+        void subtract_this_state_from_other( vehicle_state& other ) const;
+
+        void multiply_state_with_scalar( double scalar ) ;
+
 
         // ----------- Setters ------------
 
@@ -297,6 +300,8 @@ class Vehicle{
          * @param dt Time step [s].
          */
         void RK4_integration_step(vehicle_input current_input, double dt);
+
+        vehicle_state differential_step(vehicle_input current_input, double dt) const;
 
         /**
          * @brief Reset the vehicle system to initial state.
