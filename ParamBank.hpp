@@ -125,18 +125,19 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
  P.add("delta_d", JgetReq(J, "steering_system.delta_d"));
  P.add("delta_min_increement", JgetReq(J, "steering_system.delta_min_increement"));
  P.add("natural_frequency_steering_system" = 1/P.get("steering_system_timescale"));
+ // tutaj dalej powinny iść parametry antyackermana ale to wyjdzie dopiero z dopasowania w CADzie
 
   // --- Simulation and model transition params ---
   P.add("simulation_time_step",  JgetReq(J,"simulation.time_step "));
 
-  //P.add("only_kin_speed_up_boundary",  JgetReq(J,"simulation.only_kin_speed_up_boundary ")); not used
-  //P.add("only_mixed_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used
-  //P.add("only_mixed_speed_up_boundary",  JgetReq(J,"simulation.only_mixed_speed_up_boundary ")); not used
-  //P.add("only_dyn_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used
+  //P.add("only_kin_speed_up_boundary",  JgetReq(J,"simulation.only_kin_speed_up_boundary ")); not used próbujemy modelu tylko dynamicznego ale z relaksacją
+  //P.add("only_mixed_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used próbujemy modelu tylko dynamicznego ale z relaksacją
+  //P.add("only_mixed_speed_up_boundary",  JgetReq(J,"simulation.only_mixed_speed_up_boundary ")); not used próbujemy modelu tylko dynamicznego ale z relaksacją
+  //P.add("only_dyn_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used próbujemy modelu tylko dynamicznego ale z relaksacją
   
   // --- DV Board and PID for wheel speed control ---
   P.add("delay_from_control_due_dv_board_can", JgetReq(J, "dv_board.delay_from_control_due_dv_board_can"));
-  P.add(" . ")
+  P.add("delay_from_dv_board_to_actuators", JgetReq(J, "dv_board.delay_from_dv_board_to_actuators"));
   P.add("wheel_encoder_reading_time_step", JgetReq(J, "dv_board.wheel_encoder_reading_time_steep"));
   P.add("pid_loop_time_step", JgetReq(J, "dv_board.pid_loop_time_stemp"));
   P.add("pid_p", JgetReq(J, "dv_board.pid_p"));
@@ -153,12 +154,12 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("rotation_latency", JgetReq(J, "pose.rotation_latency"));
   P.add("rotation_noise", JgetReq(J, "pose.rotation_noise"));
 
-  // vision to slam pipe  - > latency of cones ??
-  
-
+  // vision to slam pipeline  ??? 
   // reszta będzie szła po prostu normalnie i latencje niepewność itd. zadane slam -> path, path -> control
-
-  // głowna niewiadomo i co będzie wpywac na performce to jak modelwoac niepewność do slam oraz DRI ( można zmierzyć latecnje będzie trudniej)
+  // głowna niewiadomo i co będzie wpywac na performce to jak modelwoac niepewność do slam oraz DRI 
+  // jak podejść do feedowanie wizji ???
+  // trzeba pogadać na spotkaniu  
+  // jak spiąć wszystko naraz w rosie by to nie umarło i chodziło niezależnie ???
 
 
   return P;

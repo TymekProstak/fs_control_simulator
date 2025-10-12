@@ -26,15 +26,7 @@ namespace lem_dynamics_sim_{
             temp.torque_left = 0.0;
         }
 
-        // }
-        // //power limitation for each wheel torque
-        // if( x.torque_right * x.omega_rr > P.get("P_max_drive")/2 ){
-        //     x.torque_right = 0.0;
-        // }
-        // if( x.torque_right * x.omega_rr < P.get("P_min_recup")/2 ){
-        //     temp.torque_right = 0.0;
-        // }
-        
+      
 
 
         return temp;
