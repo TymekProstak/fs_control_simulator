@@ -3,7 +3,7 @@
 
 namespace lem_dynamics_sim{
     
-    State derative_forces( const  ParamBank& P, const State& x, const Input& u) ;
+    State derative_tire_model( const  ParamBank& P, const State& x, const Input& u) ;
 
     // czacik żróżniczkował symbolicznie MF 5.2  elgeancko , brawo panie czatgpt
 

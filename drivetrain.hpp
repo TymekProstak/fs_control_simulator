@@ -6,7 +6,7 @@
 namespace lem_dynamics_sim_{
 
 
-    inline State derative_torque(const ParamBank& P, const  State& x, const Input& u) {
+    inline State derative_drivetrain(const ParamBank& P, const  State& x, const Input& u) {
         State temp;
         temp.setZero();
         // first order system

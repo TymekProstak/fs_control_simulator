@@ -18,17 +18,17 @@ namespace lem_dynamics_sim_{
 
     }
 
-    // to samo co wyżej tylko żróniczkwoena wzg rack angle
+    // to samo co wyżej tylko zrożniczkowane  wzg rack angle
 
     inline delta_angles derative_with_respect_to_rack_angle_anti_akerman(double rack_angle , ParamBank& P){
 
-        // póki co mamy double track bo trzeba zerknąc do CADA
+        // póki co mamy double track bo trzeba zerknąc do CAD
         
         return {1,1};
     }
 
 
-    State& x derative_steering(const ParamBank& P, const State& x, const Input& u) ;
+    State derative_steering(const ParamBank& P, const State& x, const Input& u) ;
 
 
 

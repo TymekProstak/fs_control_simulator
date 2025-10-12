@@ -5,7 +5,7 @@ namespace lem_dynamics_sim_{
 
 
 
-State derative_forces( const  ParamBank& P, const State& x, const Input& u){
+State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
 
     State temp;
     temp.setZero();
@@ -96,10 +96,10 @@ State derative_forces( const  ParamBank& P, const State& x, const Input& u){
 
    // transfer masy :  https://kktse.github.io/jekyll/update/2021/05/12/simplied-lateral-load-transfer-analysis.html
 
-   double N_fl = 0.5 * mf * g - 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r));
-   double N_fr = 0.5 * mf * g  - 0.5 * m * x.ax_prev * h/w  + x.ay_prev /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r));
-   double N_rl = 0.5 * mr * g  + 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r));
-   double N_rr = 0.5 * mr *g   + 0.5 * m * x.ax_prev * h/w  + x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r));
+   double N_fl = 0.5 * mf * g - 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+   double N_fr = 0.5 * mf * g  - 0.5 * m * x.ax_prev * h/w  + x.ay_prev /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+   double N_rl = 0.5 * mr * g  + 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
+   double N_rr = 0.5 * mr *g   + 0.5 * m * x.ax_prev * h/w  + x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
 
 
     // kinematyka statycznego slipu

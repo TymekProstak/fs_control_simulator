@@ -127,11 +127,12 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
  P.add("natural_frequency_steering_system" = 1/P.get("steering_system_timescale"));
 
   // --- Simulation and model transition params ---
-  P.add("time_step",  JgetReq(J,"simulation.time_step "));
-  P.add("only_kin_speed_up_boundary",  JgetReq(J,"simulation.only_kin_speed_up_boundary "));
-  P.add("only_mixed_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary "));
-  P.add("only_mixed_speed_up_boundary",  JgetReq(J,"simulation.only_mixed_speed_up_boundary "));
-  P.add("only_dyn_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary "));
+  P.add("simulation_time_step",  JgetReq(J,"simulation.time_step "));
+
+  //P.add("only_kin_speed_up_boundary",  JgetReq(J,"simulation.only_kin_speed_up_boundary ")); not used
+  //P.add("only_mixed_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used
+  //P.add("only_mixed_speed_up_boundary",  JgetReq(J,"simulation.only_mixed_speed_up_boundary ")); not used
+  //P.add("only_dyn_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used
   
   // --- DV Board and PID for wheel speed control ---
   P.add("delay_from_control_due_dv_board_can", JgetReq(J, "dv_board.delay_from_control_due_dv_board_can"));
