@@ -2,6 +2,7 @@
 #include <Eigen/Dense>
 #include <vector> // Dodano dla std::vector
 #include <functional> // Dodano dla std::function
+#include<cmath>
 
 namespace lem_dynamics_sim_ {
 
@@ -111,23 +112,12 @@ struct Input : public Eigen::Matrix<double, 2, 1> {
     const double& rack_angle_request() const { return (*this)(1); }
 };
 
-// Funkcja RK4 (Runge-Kutta 4. rzędu)
-void RK4(
-    const Input& u, 
-    State& x, 
-    const std::function<Eigen::Matrix<double, 17, 1>(const State&, const Input&)>& f, 
-    double dt
-) {
-    // Obliczanie współczynników k1, k2, k3, k4
-    Eigen::Matrix<double, 17, 1> k1 = f(x, u);
-    Eigen::Matrix<double, 17, 1> k2 = f(x + 0.5 * dt * k1, u);
-    Eigen::Matrix<double, 17, 1> k3 = f(x + 0.5 * dt * k2, u);
-    Eigen::Matrix<double, 17, 1> k4 = f(x + dt * k3, u);
+inline void unwrap_angle (double&angle){
 
-    // Aktualizacja stanu
-    x += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+    while (angle > M_PI) angle -= 2 * M_PI;
+    while (angle < -M_PI) angle += 2 * M_PI;
+
 }
-
 
 
 } // namespace lem_dynamics_sim_

@@ -47,93 +47,140 @@ namespace lem_dynamics_sim{
         double kappa_rl;
         double kappa_rr;
 
-        double slip_angle_fl;
-        double slip_angle_fr;
-        double slip_angle_rl;
-        double slip_angle_rr;
+        double slip_angle_fl; // deg
+        double slip_angle_fr; // deg
+        double slip_angle_rl; // deg
+        double slip_angle_rr; // deg
 
-        double slip_angle_body;
+        double slip_angle_body; // deg
 
-        double fz_fl;
-        double fz_fr;
-        double fz_rl;
-        double fz_rr;
+        double fz_fl; // N
+        double fz_fr; // N
+        double fz_rl; // N
+        double fz_rr; // N
 
-        double fy_fl;
-        double fy_fr;
-        double fy_rl;
-        double fy_rr;
+        double fy_fl; // N
+        double fy_fr; // N
+        double fy_rl; // N
+        double fy_rr; // N
 
-        double fx_fl;
-        double fx_fr;
-        double fx_rl;
-        double fx_rr;
+        double fx_fl; // N
+        double fx_fr; // N
+        double fx_rl; // N
+        double fx_rr; // N
 
-        double kappa_fl;
-        double kappa_fr;
-        double kappa_rl;
-        double kappa_rr;
+        double torque; // Nm
+        double torque_left; // Nm
+        double torque_right; // Nm
 
-        double torque;
-        double torque_left;
-        double torque_right;
+        double omega_rl; // rad/s
+        double omega_rr; // rad/s
 
-        double omega_rl;
-        double omega_rr;
+        double delta_left; // deg
+        double delta_rigth; // deg
+        double rack_angle; // deg
 
-        double delta_left;
-        double delta_rigth;
-        double rack_angle;
+        double ax; // g units
+        double ay; // g units
 
-        double ax;
-        double ay;
+        double yaw_rate; // rad/s
+        double vx; // m/s
+        double vy; // m/s
+        double x; // m
+        double y; // m
+        double yaw; // rad
 
-        double yaw_rate;
-        double vx;
-        double vy;
-        double x;
-        double y;
-        double yaw;
+        double Power_total; // kW
 
-        double Power_total;
+        double rack_angle_request; // deg
+        double torque_request; // Nm
 
-        double rack_angle_request;
-        double torque_request;
+        double time; // s
 
-        double time;
-
-        double total_drag;
-        double total_downforce;
+        double total_drag; // N
+        double total_downforce; // N
         
 
     }
 
-    // sending log info calculated in simplified way
+    // fukncja do liczenia loga przydatnych rzeczy z informacji o stanie pojazdu w danym kroku symulacji
+
 
     Log_Info log_info(const State& x, const Input& u, const ParamBank& P , int step_number){
 
         Log_Info info;
 
 
-        double vx = std::sqrt(x.vx * x.vx + P.get("epsilon") * P.get("epsilon")); // to avoid division by zero
+        double m = P.get("m");
+        double g = P.get("gravity");
+        double w = P.get("w");
+        double a = P.get("a");
+        double b = P.get("b");
+        double t_front = P.get("t_front");
+        double t_rear = P.get("t_rear");
+        double h = P.get("h");
+        double h_roll_f =  P.get("h_roll_f");
+        double h_roll_r =  P.get("h_roll_r");
 
-        
+        double Kf = P.get("Kf");
+        double Kr = P.get("Kr");
+        double K_total =  Kf + Kr;
+        double mf = m * a/w;
+        double mr = m * b/w;
+        double h_prim_f = h - h_roll_f;
+        double h_prim_r = h - h_roll_r;
+
+
+        double r_rear = P.get("r_rear");
+        double r_front = P.get("r_front");
+        double angle_construction_front = P.get("angle_construction_front");
+        double angle_construction_rear = P.get("angle_construction_rear");
+
+        double vx_rr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_rear);
+        double vy_rr = x.vy - x.yaw_rate * r_front*std::cos(angle_construction_rear);
+    
+        double vx_rl = x.vy - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
+        double vy_rl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_rear);
+    
+        double vx_fr = x.vy + x.yaw_rate * r_rear*std::sin(angle_construction_front);
+        double vy_fr = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
+    
+        double vx_fl = x.vy - x.yaw_rate * r_rear*std::sin(angle_construction_front);
+        double vy_fl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
+    
+        // usuwanie nieregularności przy małych prędkościach w rachunkach slipów - > niefizyczne tylko numeryczne : https://www.amazon.pl/Tire-Vehicle-Dynamics-Hans-Pacejka/dp/0080970168 strona z defincją Magic Fomrula
+     
+        double vx_rr_denom = std::sqrt(vx_rr*vx_rr + epsilon*epsilon) ;
+        double vx_rl_denom = std::sqrt(vx_rl*vx_rl +  epsilon*epsilon);
+        double vx_fr_denom = std::sqrt(vx_fr*vx_fr + epsilon*epsilon) ;
+        double vx_fl_denom = std::sqrt(vx_fl*vx_fl + epsilon*epsilon) ;
+
+        double slip_angle_fr = state.delta_rigth - std::atan2(vy_fr,vx_fr_denom) ;
+        double slip_angle_fl = state.delta_lelft  - std::atan2(vy_fl,vx_fl_denom) ;
+        double slip_angle_rr =  - std::atan2(vy_rr,vx_rl_denom);
+        double slip_angle_rl =  - std::atan2(vy_rl,vx_rl_denom);
+
+        double slip_ratio_rr = (x.omega_right * R - vx_rr )/vx_rr;
+        double slip_ratio_rl = (x.omega_left * R - vx_rl) / vx.vx_rl;
+    
+
         info.kappa_fl = 0.0 ; // przednie koła są beznapędowe
         info.kappa_fr = 0.0; // przednie koła są beznapędowe
-        info.kappa_rl = x.omega_rl * P.get("R") / vx - 1;
-        info.kappa_rr = x.omega_rr * P.get("R") / vx - 1;
+        info.kappa_rl = slip_ratio_rl;
+        info.kappa_rr = slip_ratio_rr;
 
-        info.slip_angle_fl = x.slip_angle_fl;
-        info.slip_angle_fr = x.slip_angle_fr;
-        info.slip_angle_rl = x.slip_angle_rl;
-        info.slip_angle_rr = x.slip_angle_rr;
+        info.slip_angle_fl = slip_angle_fl * 180 / M_PI ;
+        info.slip_angle_fr = slip_angle_fr * 180 / M_PI ;
+        info.slip_angle_rl =  slip_angle_rl * 180 / M_PI ;
+        info.slip_angle_rr = slip_angle_rr * 180 / M_PI ;
+     
 
-        info.slip_angle_body = std::atan2(x.vy, vx);
+        info.slip_angle_body = std::atan2(x.vy, vx) * 180 / M_PI ;
 
-        info.fz_fl = 
-        info.fz_fr = 
-        info.fz_rl = 
-        info.fz_rr = 
+        info.fz_fl = 0.5 * mf * g - 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+        info.fz_fr =   0.5 * mf * g  - 0.5 * m * x.ax_prev * h/w  + x.ay_prev /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+        info.fz_rl =   0.5 * mr * g  + 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
+        info.fz_rr =  0.5 * mr *g   + 0.5 * m * x.ax_prev * h/w  + x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
 
         info.fy_fl = x.fy_fl;
         info.fy_fr = x.fy_fr;
@@ -145,7 +192,7 @@ namespace lem_dynamics_sim{
         info.fx_rl = x.fx_rl;
         info.fx_rr = x.fx_rr;
 
-        info.Power_total = (x.torque) * (x.omega_rr + x.omega_rl)/2 ;
+        info.Power_total = (x.torque) * (x.omega_rr + x.omega_rl)/2 / 1000 ; // kW
 
        
 
@@ -156,12 +203,12 @@ namespace lem_dynamics_sim{
         info.omega_rl = x.omega_rl;
         info.omega_rr = x.omega_rr;
 
-        info.delta_left = x.delta_left;
-        info.delta_rigth = x.delta_right;
-        info.rack_angle = x.rack_angle;
+        info.delta_left = x.delta_left * 180 / M_PI;
+        info.delta_rigth = x.delta_right * 180 / M_PI;
+        info.rack_angle = x.rack_angle * 180 / M_PI;
 
-        info.ax = () / P.get("m");
-        info.ay =  () / P.get("m");
+        info.ax = x.ax_prev/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
+        info.ay = x. ay_prev/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
 
         info.yaw_rate = x.yaw_rate;
         info.vx = x.vx;
@@ -169,7 +216,7 @@ namespace lem_dynamics_sim{
 
         info.time = step_number * P.get("simulation_time_step");
 
-        info.rack_angle_request = u.rack_angle_request;
+        info.rack_angle_request = u.rack_angle_request * 180 / M_PI;
         info.torque_request = u.torque_request;
         info.x = x.x;
         info.y = x.y;
@@ -178,4 +225,22 @@ namespace lem_dynamics_sim{
         info.total_downforce = P.get("Cl1") * x.vx * x.vx + P.get("Cl2") * x.vx * x.vx;
 
         return info;
+}
+
+    void euler_sim_timestep(State& x, const Input& u, const ParamBank& P)){
+        double dt = P.get("simulation_time_step");
+        State dx = model_derative(P,x,u);
+        x += dx * dt;
+        unwrap_angle(x.yaw);
+    }
+    void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P){
+        double dt = P.get("simulation_time_step");
+        State k1 = model_derative(P,x,u);
+        State k2 = model_derative(P,x + 0.5 * dt * k1,u);
+        State k3 = model_derative(P,x + 0.5 * dt * k2,u);
+        State k4 = model_derative(P,x + dt * k3,u);
+        x += (dt/6) * (k1 + 2*k2 + 2*k3 + k4);
+        unwrap_angle(x.yaw);
+    }
+
 }
