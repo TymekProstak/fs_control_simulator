@@ -69,6 +69,7 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
     double r_front = P.get("r_front");
     double angle_construction_front = P.get("angle_construction_front");
     double angle_construction_rear = P.get("angle_construction_rear");
+    double R = P.get("R");
 
      // kinematyka 
 
@@ -96,31 +97,31 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
 
    // transfer masy :  https://kktse.github.io/jekyll/update/2021/05/12/simplied-lateral-load-transfer-analysis.html
 
-   double N_fl = 0.5 * mf * g - 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
-   double N_fr = 0.5 * mf * g  - 0.5 * m * x.ax_prev * h/w  + x.ay_prev /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
-   double N_rl = 0.5 * mr * g  + 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
-   double N_rr = 0.5 * mr *g   + 0.5 * m * x.ax_prev * h/w  + x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
+   double N_fl = 0.5 * mf * g - 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+   double N_fr = 0.5 * mf * g  - 0.5 * m * x.prev_ax * h/w  + x.prev_ay /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+   double N_rl = 0.5 * mr * g  + 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
+   double N_rr = 0.5 * mr *g   + 0.5 * m * x.prev_ax * h/w  + x.prev_ay/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
 
 
     // kinematyka statycznego slipu
 
-    double slip_angle_fr = state.delta_rigth - std::atan2(vy_fr,vx_fr_denom) ;
-    double slip_angle_fl = state.delta_lelft  - std::atan2(vy_fl,vx_fl_denom) ;
+    double slip_angle_fr = x.delta_right - std::atan2(vy_fr,vx_fr_denom) ;
+    double slip_angle_fl = x.delta_left  - std::atan2(vy_fl,vx_fl_denom) ;
     double slip_angle_rr =  - std::atan2(vy_rr,vx_rl_denom);
     double slip_angle_rl =  - std::atan2(vy_rl,vx_rl_denom);
 
-    slip_angle_fr = std::clamp(slip_angle_fl,-std::pi/2 + 0.01,std::pi/2 - 0.01); // so dosen't go to infinity
-    slip_angle_fl = std::clamp(slip_angle_fr,-std::pi/2 + 0.01 , std::pi - 0.01); // so dosen't go to infinity
-    slip_angle_rr = std::clamp(slip_angle_rl,-std::pi/2 + 0.01 , std::pi - 0.01); // so dosen't go to infinity
-    slip_angle_rl = std::clamp(slip_angle_rr,-std::pi/2 + 0.01 , std::pi - 0.01); // so dosen't go to infinity
+    slip_angle_fr = std::clamp(slip_angle_fl,-M_PI/2 + 0.01,M_PI/2 - 0.01); // so dosen't go to infinity
+    slip_angle_fl = std::clamp(slip_angle_fr,-M_PI/2 + 0.01 , M_PI/2 - 0.01); // so dosen't go to infinity
+    slip_angle_rr = std::clamp(slip_angle_rl,-M_PI/2 + 0.01 , M_PI/2 - 0.01); // so dosen't go to infinity
+    slip_angle_rl = std::clamp(slip_angle_rr,-M_PI/2 + 0.01 , M_PI/2 - 0.01); // so dosen't go to infinity
 
 
     double slip_ratio_fr = 0.0; // przednie koła są beznapędwoe
     double slip_ratio_fl = 0.0; // przednie koła są beznapędowe
 
     
-    double slip_ratio_rr = (x.omega_right * R - vx_rr )/vx_rr_denom;
-    double slip_ratio_rl = (x.omega_left * R - vx_rl) / vx.rl_denom;
+    double slip_ratio_rr = (x.omega_rr * R - vx_rr )/vx_rr_denom;
+    double slip_ratio_rl = (x.omega_rl * R - vx_rl) / vx_rl_denom;
 
 
     // clamping slips -> pytanie czy jak zrobie do -1,1 to nie usunę jakiś excessiv slipa? chuj wie
@@ -187,10 +188,10 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
         double Cy_fr = pCy1;
         double Cy_rl = pCy1;
         double Cy_rr = pCy1;
-        double Ky_fl = N0 * pKy1  * std::sin( 2 * std::atan2( N_fl, /(pKy2 * N0)));
-        double Ky_fr = N0 * pKy1  * std::sin(2 * std::atan2( N_fr, /(pKy2 * N0)));
-        double Ky_rl = N0 * pKy1  * std::sin(2 * std::atan2( N_rl, /(pKy2 * N0)));
-        double Ky_rr = N0 * pKy1  * std::sin(2 * std::atan2( N_rr, /(pKy2 * N0)));
+        double Ky_fl = N0 * pKy1  * std::sin( 2 * std::atan2( N_fl ,(pKy2 * N0)));
+        double Ky_fr = N0 * pKy1  * std::sin(2 * std::atan2( N_fr ,(pKy2 * N0)));
+        double Ky_rl = N0 * pKy1  * std::sin(2 * std::atan2( N_rl ,(pKy2 * N0)));
+        double Ky_rr = N0 * pKy1  * std::sin(2 * std::atan2( N_rr,(pKy2 * N0)));
         double By_fl = Ky_fl/Cy_fl/Dy_fl/N_fl ;
         double By_fr = Ky_fr/Cy_fr/Dy_fr/N_fr  ;
         double By_rl = Ky_rl/Cy_rl/Dy_rl/N_rl  ;
@@ -204,27 +205,27 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
     double Fx_fl = 0.0 ;// przednie koła są beznapędowe
 
     double Fy_fl_static = N_fl*slip_y_fl/slip_fl * Dy_fl*std::sin(Cy_fl * std::atan(By_fl * slip_fl - Ey_fl*(By_fl * slip_fl - std::atan(By_fl * slip_fl ) )));
-    double d_Fy_fl_static_d_slip_angle =  dFy_dslipY(  double slip_x_fl, double slip_y_fl, double N_fl, double Dy_fl, double Cy_fl, double By_fl, double Ey_fl);
+    double d_Fy_fl_static_d_slip_angle =  dFy_dslipY(   slip_x_fl,  slip_y_fl,  N_fl,  Dy_fl,  Cy_fl,  By_fl,  Ey_fl);
     
 
     double Fx_fr = 0.0 ; // przednie koła są beznapędowe
     
-    double Fy_fr_static =  N_fr*slip_y_ft/slip_fr* Dy_fr*std::sin(Cy_fr * std::atan(By_fr * slip_fr - Ey_fr*(By_fr * slip_fr - std::atan(By_fr * slip_fr ) ))); 
-    double d_Fy_fr_static_d_slip_angle = dFy_dslipY(  double slip_x_fr, double slip_y_fr, double N_fr, double Dy_fr, double Cy_fr, double By_fr, double Ey_fr);
+    double Fy_fr_static =  N_fr*slip_y_fl/slip_fr* Dy_fr*std::sin(Cy_fr * std::atan(By_fr * slip_fr - Ey_fr*(By_fr * slip_fr - std::atan(By_fr * slip_fr ) ))); 
+    double d_Fy_fr_static_d_slip_angle = dFy_dslipY(   slip_x_fr,  slip_y_fr,  N_fr,  Dy_fr,  Cy_fr,  By_fr,  Ey_fr);
 
     /// rear
 
     double Fx_rl_static = N_rl*slip_x_rl/slip_rl * Dx_rl*std::sin(Cx_rl * std::atan(Bx_rl * slip_rl - Ex_rl*(Bx_rl * slip_rl - std::atan(Bx_rl * slip_rl ) ))); 
-    double d_Fx_rl_static_d_slip_ratio = dFx_dslipX(  double slip_x_rl, double slip_y_rl, double N_rl, double Dx_rl, double Cx_rl, double Bx_rl, double Ex_rl);
+    double d_Fx_rl_static_d_slip_ratio = dFx_dslipX(   slip_x_rl,  slip_y_rl,  N_rl,  Dx_rl,  Cx_rl,  Bx_rl,  Ex_rl);
 
     double Fy_rl_static = N_rl*slip_y_rl/slip_rl* Dy_rl*std::sin(Cy_rl * std::atan(By_rl * slip_rl - Ey_rl*(By_rl * slip_rl - std::atan(By_rl * slip_rl ) )));
-    double d_Fy_rl_static_d_slip_angle =  dFy_dslipY(  double slip_x_rl, double slip_y_rl, double N_rl, double Dy_rl, double Cy_rl, double By_rl, double Ey_rl);
-    
+    double d_Fy_rl_static_d_slip_angle =  dFy_dslipY(   slip_x_rl,  slip_y_rl,  N_rl,  Dy_rl,  Cy_rl,  By_rl,  Ey_rl);
+
     double Fx_rr_static = N_rr*slip_x_rr/slip_rr* Dx_rr*std::sin(Cx_rr * std::atan(Bx_rr * slip_rr - Ex_rr*(Bx_rr * slip_rr - std::atan(Bx_rr * slip_rr ) ))); 
-    double d_Fx_rr_static_d_slip_ratio = dFx_dslipX(  double slip_x_rr, double slip_y_rr, double N_rr, double Dx_rr, double Cx_rr, double Bx_rr, double Ex_rr);
+    double d_Fx_rr_static_d_slip_ratio = dFx_dslipX(   slip_x_rr,  slip_y_rr,  N_rr,  Dx_rr,  Cx_rr,  Bx_rr,  Ex_rr);
 
     double Fy_rr_static = N_rr*slip_y_rr/slip_rr* Dy_rr*std::sin(Cy_rr * std::atan(By_rr * slip_rr - Ey_rr*(By_rr * slip_rr - std::atan(By_rr * slip_rr ) ))); 
-    double d_Fy_rr_static_d_slip_angle = dFy_dslipY(  double slip_x_rr, double slip_y_rr, double N_rr, double Dy_rr, double Cy_rr, double By_rr, double Ey_rr);
+    double d_Fy_rr_static_d_slip_angle = dFy_dslipY(   slip_x_rr,  slip_y_rr,  N_rr,  Dy_rr,  Cy_rr,  By_rr,  Ey_rr);
     
 
     // liczenie dynamicznego relax length -  https://www.researchgate.net/publication/251107159_First_Order_Tire_Dynamics
@@ -239,13 +240,13 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
 
    // liczenie pochodnych sił z  modelu relaksacyjnym opóźnieniem - https://www.researchgate.net/publication/251107159_First_Order_Tire_Dynamics
 
-   temp.Fy_fl = (Fy_fl_static - x.Fy_fl)/dynamic_relax_length_slip_angle_fl * vx_fl_denom;
-   temp.Fy_fr = (Fy_fr_static - x.Fy_fr)/dynamic_relax_length_slip_angle_fr * vx_fr_denom;
-   temp.Fy_rl = (Fy_rl_static - x.Fy_rl)/dynamic_relax_length_slip_angle_rl * vx_rl_denom;
-   temp.Fy_rr = (Fy_rr_static - x.Fy_rr)/dynamic_relax_length_slip_angle_rr * vx_rr_denom;
+   temp.fy_fl = (Fy_fl_static - x.fy_fl)/dynamic_relax_length_slip_angle_fl * vx_fl_denom;
+   temp.fy_fr = (Fy_fr_static - x.fy_fr)/dynamic_relax_length_slip_angle_fr * vx_fr_denom;
+   temp.fy_rl = (Fy_rl_static - x.fy_rl)/dynamic_relax_length_slip_angle_rl * vx_rl_denom;
+   temp.fy_rr = (Fy_rr_static - x.fy_rr)/dynamic_relax_length_slip_angle_rr * vx_rr_denom;
 
-   temp.Fx_rl = (Fx_rl_static - x.Fx_rl)/dynamic_relax_length_slip_ratio_rl * vx_rl_denom;
-   temp.Fx_rr = (Fx_rr_static - x.Fx_rr)/dynamic_relax_length_slip_ratio_rr * vx_rr_denom;
+   temp.fx_rl = (Fx_rl_static - x.fx_rl)/dynamic_relax_length_slip_ratio_rl * vx_rl_denom;
+   temp.fx_rr = (Fx_rr_static - x.fx_rr)/dynamic_relax_length_slip_ratio_rr * vx_rr_denom;
 
     return temp;
 
