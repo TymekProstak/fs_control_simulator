@@ -6,7 +6,7 @@
         State temp;
         temp.setZero();
 
-        double omega_n = P.natural_frequency_steering_system  ;
+        double omega_n = P.get("natural_frequency_steering_system")  ;
         double omega_n_pow = omega_n*omega_n;
 
         temp.rack_angle = x.d_rack_angle ;

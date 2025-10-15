@@ -3,7 +3,7 @@
 
 namespace lem_dynamics_sim{
     
-    State derative_tire_model( const  ParamBank& P, const State& x, const Input& u) ;
+    State derative_tire_model( const ParamBank& P, const State& x, const Input& u) ;
 
     // czacik żróżniczkował symbolicznie MF 5.2  elgeancko , brawo panie czatgpt
 
@@ -11,7 +11,7 @@ namespace lem_dynamics_sim{
         double slipx, double slipy,
         double N, double Dy, double Cy, double By, double Ey)
     {
-        const double eps = 1e-12; // regularizacja dla r ~ 0
+        const double eps = 1e-4; // regularizacja dla r ~ 0
         const double r = std::hypot(slipx, slipy);
         const double r_safe = (r < eps) ? eps : r;
     
@@ -43,8 +43,13 @@ namespace lem_dynamics_sim{
     {
        
     
+        const double eps = 1e-4; // regularizacja dla r ~ 0
+        const double r = std::hypot(slipx, slipy);
+        const double r_safe = (r < eps) ? eps : r;
+    
         const double inv_r   = 1.0 / r_safe;
         const double inv_r3  = inv_r * inv_r * inv_r;
+    
     
         const double h = Bx * r_safe;
         const double g = h - Ex * (h - std::atan(h));

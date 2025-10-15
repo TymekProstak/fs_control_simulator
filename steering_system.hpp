@@ -11,16 +11,16 @@ namespace lem_dynamics_sim_{
 
     //// tutaj trzeba zaimplementować funckję akermana itd
 
-    inline delta_angles anit_akerman(double rack_angle , ParamBank& P){
+    inline delta_angels anit_akerman(double rack_angle , const ParamBank& P){
 
         // póki co mamy double track bo trzeba zerknąc do CADA
-        return rack_angle;
+        return {rack_angle,rack_angle};
 
     }
 
     // to samo co wyżej tylko zrożniczkowane  wzg rack angle
 
-    inline delta_angles derative_with_respect_to_rack_angle_anti_akerman(double rack_angle , ParamBank& P){
+    inline delta_angels derative_with_respect_to_rack_angle_anti_akerman(double rack_angle , const ParamBank& P){
 
         // póki co mamy double track bo trzeba zerknąc do CAD
         
