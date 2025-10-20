@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ParamBank.hpp"
 #include "uttilities.hpp"
 
@@ -5,7 +7,7 @@
 
 namespace lem_dynamics_sim_{
 
-    inline State derative_wheels_dynamics_model(ParamBank& P, State& x, const Input& u) {
+    inline State derative_wheels_dynamics_model(const ParamBank& P, const State& x, const Input& u) {
 
         State temp;
         temp.setZero();

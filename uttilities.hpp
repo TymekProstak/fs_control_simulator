@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <cmath>
+#include <algorithm>
 
 namespace lem_dynamics_sim_ {
 

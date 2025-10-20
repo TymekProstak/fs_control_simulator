@@ -1,6 +1,6 @@
 #include "double_track.hpp"
 
-namespace lem_dynamics_sim{
+namespace lem_dynamics_sim_{
 
     State model_derative(const ParamBank& P, const  State& x, const Input& u) {
 
@@ -10,9 +10,10 @@ namespace lem_dynamics_sim{
         double areo_downforce = areo_downforce_front + areo_downforce_rear;
         double rolling_resistance = P.get("Cr") * ( P.get("m") * P.get("g") + areo_downforce ) ;
 
-        double Fx_total = x.fx_fl * cos(x.delta_left) - x.fy_fl * sin(x.delta_left) + x.fx_fr * cos(x.delta_right) -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr - rolling_resistance - areo_drag;
-        double Fy_total = x.fy_fl * cos(x.delta_left) + x.fx_fl * sin(x.delta_left) + x.fy_fr * cos(x.delta_right) + x.fx_fr * sin(x.delta_right) + x.fy_rl + x.fy_rr;
-        double Mz = ;
+        double Fx_total = - x.fy_fl * sin(x.delta_left)   -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr - rolling_resistance - areo_drag;
+        double Fy_total = x.fy_fl * cos(x.delta_left)   + x.fy_fr * cos(x.delta_right) +  + x.fy_rl + x.fy_rr;
+        double Mz = -(- x.fy_fl * sin(x.delta_left))*P.get("t_front")/2  + (-  x.fy_fr * sin(x.delta_right))*P.get("t_front")/2 + x.fx_rr*P.get("t_rear")/2  - x.fx_rl*P.get("t_rear")/2 ;
+        Mz +=  (x.fy_fl * cos(x.delta_left)  * sin(x.delta_left) +  x.fy_fr * cos(x.delta_right) )*P.get("a") - (x.fy_rl + x.fy_rr)*P.get("b") ;
         State temp;
         temp.setZero();
 
@@ -66,6 +67,7 @@ namespace lem_dynamics_sim{
         double mr = m * b/w;
         double h_prim_f = h - h_roll_f;
         double h_prim_r = h - h_roll_r;
+        double epsilon = P.get("epsilon");
 
 
         double r_rear = P.get("r_rear");
@@ -92,13 +94,13 @@ namespace lem_dynamics_sim{
         double vx_fr_denom = std::sqrt(vx_fr*vx_fr + epsilon*epsilon) ;
         double vx_fl_denom = std::sqrt(vx_fl*vx_fl + epsilon*epsilon) ;
 
-        double slip_angle_fr = state.delta_rigth - std::atan2(vy_fr,vx_fr_denom) ;
-        double slip_angle_fl = state.delta_lelft  - std::atan2(vy_fl,vx_fl_denom) ;
+        double slip_angle_fr = x.delta_right - std::atan2(vy_fr,vx_fr_denom) ;
+        double slip_angle_fl = x.delta_left  - std::atan2(vy_fl,vx_fl_denom) ;
         double slip_angle_rr =  - std::atan2(vy_rr,vx_rl_denom);
         double slip_angle_rl =  - std::atan2(vy_rl,vx_rl_denom);
 
-        double slip_ratio_rr = (x.omega_right * R - vx_rr )/vx_rr;
-        double slip_ratio_rl = (x.omega_left * R - vx_rl) / vx.vx_rl;
+        double slip_ratio_rr = (x.omega_rr * P.get("R") - vx_rr )/vx_rr;
+        double slip_ratio_rl = (x.omega_rl * P.get("R") - vx_rl) / vx_rl;
     
 
         info.kappa_fl = 0.0 ; // przednie koła są beznapędowe
@@ -112,12 +114,12 @@ namespace lem_dynamics_sim{
         info.slip_angle_rr = slip_angle_rr * 180 / M_PI ;
      
 
-        info.slip_angle_body = std::atan2(x.vy, vx) * 180 / M_PI ;
+        info.slip_angle_body = std::atan2(x.vy, x.vx) * 180 / M_PI ;
 
-        info.fz_fl = 0.5 * mf * g - 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
-        info.fz_fr =   0.5 * mf * g  - 0.5 * m * x.ax_prev * h/w  + x.ay_prev /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
-        info.fz_rl =   0.5 * mr * g  + 0.5 * m * x.ax_prev * h/w  - x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
-        info.fz_rr =  0.5 * mr *g   + 0.5 * m * x.ax_prev * h/w  + x.ay_prev/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
+        info.fz_fl = 0.5 * mf * g - 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+        info.fz_fr =   0.5 * mf * g  - 0.5 * m * x.prev_ax * h/w  + x.prev_ay /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl1") * x.vx * x.vx ;
+        info.fz_rl =   0.5 * mr * g  + 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
+        info.fz_rr =  0.5 * mr *g   + 0.5 * m * x.prev_ax * h/w  + x.prev_ay/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1/2 * P.get("Cl2") * x.vx * x.vx ;
 
         info.fy_fl = x.fy_fl;
         info.fy_fr = x.fy_fr;
@@ -144,12 +146,12 @@ namespace lem_dynamics_sim{
         info.delta_rigth = x.delta_right * 180 / M_PI;
         info.rack_angle = x.rack_angle * 180 / M_PI;
 
-        info.ax = x.ax_prev/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
-        info.ay = x. ay_prev/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
+        info.ax = x.prev_ax/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
+        info.ay = x. prev_ay/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
 
         info.yaw_rate = x.yaw_rate;
         info.vx = x.vx;
-        info.vy = x.vy
+        info.vy = x.vy;
 
         info.time = step_number * P.get("simulation_time_step");
 
@@ -164,7 +166,7 @@ namespace lem_dynamics_sim{
         return info;
 }
 
-    void euler_sim_timestep(State& x, const Input& u, const ParamBank& P)){
+    void euler_sim_timestep(State& x, const Input& u, const ParamBank& P){
         double dt = P.get("simulation_time_step");
         State dx = model_derative(P,x,u);
         x += dx * dt;

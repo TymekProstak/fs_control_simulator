@@ -1,3 +1,5 @@
+#pragma once
+
 #include "uttilities.hpp"
 #include "ParamBank.hpp"
 
@@ -31,5 +33,5 @@ namespace lem_dynamics_sim_{
     State derative_steering(const ParamBank& P, const State& x, const Input& u) ;
 
 
-
+    
 }

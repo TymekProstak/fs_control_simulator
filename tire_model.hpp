@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ParamBank.hpp"
 #include"uttilities.hpp"
 

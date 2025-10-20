@@ -136,31 +136,34 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   //P.add("only_dyn_speed_low_boundary",  JgetReq(J,"simulation.only_mixed_speed_low_boundary ")); not used próbujemy modelu tylko dynamicznego ale z relaksacją
   
   // --- DV Board and PID for wheel speed control ---
-  P.add("delay_from_control_due_dv_board_can", JgetReq(J, "dv_board.delay_from_control_due_dv_board_can"));
-  P.add("delay_from_dv_board_to_actuators", JgetReq(J, "dv_board.delay_from_dv_board_to_actuators"));
+  P.add("dealy_from_control_to_maxon_command", JgetReq(J," dv_board.dealy_from_control_to_maxon_command"    ));
+  P.add("dealy_from_control_to_torque_command", JgetReq(J, "dv_board.dealy_from_control_to_torque_command"  ));
   P.add("wheel_encoder_reading_time_step", JgetReq(J, "dv_board.wheel_encoder_reading_time_steep"));
-  P.add("pid_loop_time_step", JgetReq(J, "dv_board.pid_loop_time_stemp"));
   P.add("pid_p", JgetReq(J, "dv_board.pid_p"));
   P.add("pid_i", JgetReq(J, "dv_board.pid_i"));
   P.add("pid_d", JgetReq(J, "dv_board.pid_d"));
 
-  // Pose from DRI
-  P.add("pose_latency", JgetReq(J, "pose.pose_latency"));
-  P.add("pose_noise", JgetReq(J, "pose.pose_noise"));
-  P.add("vel_latency", JgetReq(J, "pose.vel_latency"));
-  P.add("vel_noise", JgetReq(J, "pose.vel_noise"));
-  P.add("orientation_latency", JgetReq(J, "pose.orientation_latency"));
-  P.add("orientation_noise", JgetReq(J, "pose.orientation_noise"));
-  P.add("rotation_latency", JgetReq(J, "pose.rotation_latency"));
+  // Pose from DRI 
+  P.add("pose_latency", JgetReq(J, "pose.pose_latency")); // hard to estimate probably wont be used
+  P.add("pose_noise", JgetReq(J, "pose.pose_noise")); 
+  P.add("vel_latency", JgetReq(J, "pose.vel_latency")); // velocitty from dri will have to go as a "delta x/delta t" so wont be used
+  P.add("vel_noise", JgetReq(J, "pose.vel_noise")); // velocitty from dri will have to go as a "delta x/delta t" so wont be used
+  P.add("orientation_latency", JgetReq(J, "pose.orientation_latency")); //  hard to estimate probably wont be used
+  P.add("orientation_noise", JgetReq(J, "pose.orientation_noise")); 
+  P.add("rotation_latency", JgetReq(J, "pose.rotation_latency")); //hard to estimate probably wont be used
   P.add("rotation_noise", JgetReq(J, "pose.rotation_noise"));
 
-  // vision to slam pipeline  ??? 
-  // reszta będzie szła po prostu normalnie i latencje niepewność itd. zadane slam -> path, path -> control
-  // głowna niewiadomo i co będzie wpywac na performce to jak modelwoac niepewność do slam oraz DRI 
-  // jak podejść do feedowanie wizji ???
-  // trzeba pogadać na spotkaniu  
-  // jak spiąć wszystko naraz w rosie by to nie umarło i chodziło niezależnie ???
-
+  // vision
+  P.add("fov_x",JgetReq(J,"vision.fov_x"));
+  P.add("fov_y",JgetReq(J,"vision.fov_y"));
+  P.add("z_camera_to_cog",JgetReq(J,"vision.z_camera_to_cog"));
+  P.add("x_camera_to_cog" , JgetReq(J,"vision.x_camera_to_cog"));
+  P.add("y_camera_to_cog", JgetReq(J,"vision.y_camera_to_cog"));
+  P.add("cone_height" , JgetReq(J,"vision.cone_height"));
+  P.add("frames_per_second", JgetReq(J,"vision.frames_per_second"));
+  P.add("mean_time_of_vision_execuction" , JgetReq(J,"vision.mean_time_of_vision_execuction"));
+  P.add("var_of_vision_time_execution", JgetReq(J,"vision.var_of_vision_time_execution"));
+  P.add("camera_range",JgetReq(J,"vision.camera_range"));
 
   return P;
 }

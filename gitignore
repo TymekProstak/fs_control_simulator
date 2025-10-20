@@ -1,0 +1,11 @@
+# Ignore files and directories already included in system-wide gitignores
+# (e.g., .git/info/exclude or global gitignore)
+
+# Ignore .vscode folder
+.vscode/
+
+# Ignore Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore track_generator folder
+track_generator/
