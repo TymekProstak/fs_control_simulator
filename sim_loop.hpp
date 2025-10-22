@@ -4,12 +4,17 @@
 #include "cone_detector.hpp"
 #include "cone_track.hpp"
 
+
 #include <ros/ros.h>
 #include <std_msgs/Float64MultiArray.h>
 
 #include <string>
 #include <deque>
 #include <optional>
+
+#include <algorithm>
+#include <cmath>
+#include <random>
 
 /**
  *  Szkielet węzła symulacji LEM + ROS
@@ -48,9 +53,7 @@ public:
     // Główny krok symulacji (wykonaj jeden krok)
     void step();
 
-    // Alternatywnie: krok reagujący na komendę prędkości/skrętu
-    void step_speed_command(const Input& u);
-
+    
     // Dostęp do stanu i parametrów
     State get_state() const;
     ParamBank get_parameters() const;
@@ -134,6 +137,7 @@ private:
 
     // Pomoc: zastosowanie opóźnionych wejść sterujących
     void apply_delayed_inputs_if_due_();
+    double sample_vision_exec_time_() const; // losuje czas obliczeń wizji [s] z t-Studenta(ν=6)
 };
 
 } // namespace lem_dynamics_sim_

@@ -1,8 +1,4 @@
-#include "simulation_lem_ros_node.hpp"
-
-#include <algorithm>
-#include <cmath>
-#include <random>
+#include "sim_loop.hpp"
 
 namespace lem_dynamics_sim_ {
 
@@ -52,7 +48,7 @@ void Simulation_lem_ros_node::step() {
     shoot_camera_or_enqueue_if_due_();
 
     // 3) Aktualizacja PID (jeśli pracujemy w trybie speed)
-    update_pid_if_due_();
+    update_pid_if_due_(); // gdy nie w trybie speed to nie zmieni momentu nie ma co się przejmować 
 
     // 4) Publikacje ramek, które „dojrzały” (gotowe po opóźnieniu obliczeń)
     publish_ready_camera_frames_from_queue_();
@@ -65,20 +61,6 @@ void Simulation_lem_ros_node::step() {
     ++step_number_;
 }
 
-void Simulation_lem_ros_node::step_speed_command(const DV_control_input& u) {
-    // Zapamiętaj żądane wejście – zastosujemy z opóźnieniami
-    last_input_requested_ = u;
-
-    // Ustaw „deadline” zastosowania obu wejść (jeśli nie czekamy już na istniejący deadline)
-    if (step_number_to_apply_steer_input_ <= step_number_)
-        step_number_to_apply_steer_input_  = step_number_ + step_of_steer_input_application_;
-
-    if (step_number_to_apply_torque_input_ <= step_number_)
-        step_number_to_apply_torque_input_ = step_number_ + step_of_torque_input_application_;
-
-    
-    
-}
 
 State Simulation_lem_ros_node::get_state() const { return state_; }
 ParamBank Simulation_lem_ros_node::get_parameters() const { return P_; }
@@ -156,20 +138,21 @@ void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_() {
     if (step_of_camera_shoot_ <= 0) return;
     if (step_number_ % step_of_camera_shoot_ != 0) return;
 
-    // Generuj „surowe” detekcje stożków w układzie kamery
+    // 1) „Zrób zdjęcie” i policz detekcje stożków w układzie kamery
     Track detection = get_cone_detections_in_camera_frame(state_, track_global_, P_);
 
-    // Oszacuj koszt obliczeń i wyznacz krok gotowości
-    // (np. P_.get("camera_processing_time") w sekundach → na kroki)
-    // tutaj t student na szacowanie czasu obliczeń na podstawie dancyh od janka
+    // 2) Oszacuj koszt obliczeń wizji z t-Studenta(ν=6) na podstawie μ i var z P_
+    const double dt               = P_.get("simulation_time_step");
+    const double vision_exec_time = sample_vision_exec_time_();            // [s]
+    const int    processing_steps = std::max(0, (int)std::round(vision_exec_time / dt));
 
+    // 3) Zbuduj zadanie i wstaw do kolejki (max 3 elementy)
     CameraTask task;
     task.ready_step = step_number_ + processing_steps;
     task.frame      = std::move(detection);
 
-    // Kolejka maks 3 elementy: jeśli pełna — zdejmij najstarszą (upuszczamy ramkę)
     if ((int)camera_queue_.size() >= 3) {
-        camera_queue_.pop_front();
+        camera_queue_.pop_front(); // upuść najstarszą ramkę
     }
     camera_queue_.push_back(std::move(task));
 }
@@ -188,14 +171,14 @@ void Simulation_lem_ros_node::update_pid_if_due_() {
     if (step_number_pid_update_period_ <= 0) return;
     if (step_number_ % step_number_pid_update_period_ != 0) return;
 
-    // TODO: wstaw właściwą logikę PID (P/I/D, anti-windup, itd.)
-    // przykład szkicu:
-    // double error = target_wheel_speed_ - pid_omega_actual_;
-    // pid_prev_I_ += error * (step_number_pid_update_period_ * P_.get("simulation_time_step"));
-    // double u = Kp*error + Ki*pid_prev_I_ + Kd*(error - pid_prev_error_)/Ts_pid;
-    // pid_prev_error_ = error;
-    // pid_speed_out_ = u;
-    // torque_command_ = saturate(u, -Tmax, Tmax);
+    
+
+    // głupi pid jak na dv boardzie powiny być możę feedforwqad + antiwidnaup at least ale to do rozwoju sytemu
+    double error = target_wheel_speed_ - pid_omega_actual_ * P.get("R");
+    pid_prev_I_ += error * (step_number_pid_update_period_ * P_.get("pid_time_step"));
+    double u = P.get("pid_p")*error + P.get("pid_i")*pid_prev_I_ + P.get("pid_d")*(error - pid_prev_error_)/P.get("pid_time_step");
+    pid_prev_error_ = error;
+   
 }
 
 double Simulation_lem_ros_node::random_noise_generator_() const {
@@ -221,6 +204,28 @@ void Simulation_lem_ros_node::publish_cones_(const Track& cones) {
         msg.data.push_back(c.y);
     }
     pub_cones_.publish(msg);
+}
+
+double Simulation_lem_ros_node::sample_vision_exec_time_() const
+{
+    // Parametry z ParamBank (sekundy i sekundy^2)
+    const double mu   = P_.get("vision.mean_time_of_vision_execuction");   // średni czas [s]
+    const double var  = P_.get("vision.var_of_vision_time_execution");     // wariancja [s^2]
+
+    // t-Student z ν=6 (wg Twojej prośby); dla ν>2 wariancja t wynosi ν/(ν-2)
+    constexpr int df = 6;
+    const double t_var = double(df) / double(df - 2);           // = 6/4 = 1.5
+    const double t_std = std::sqrt(t_var);
+
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    std::student_t_distribution<double> t_dist(df);
+
+    // z ~ t_ν, standaryzujemy do wariancji 1 i skalujemy do docelowej wariancji
+    const double z_unitvar = t_dist(rng) / t_std;                // var ≈ 1
+    const double exec_time = mu + std::sqrt(std::max(0.0, var)) * z_unitvar;
+
+    // Czas nie może być ujemny
+    return std::max(exec_time, 0.0);
 }
 
 } // namespace lem_dynamics_sim_
