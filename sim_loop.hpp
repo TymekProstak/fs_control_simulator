@@ -80,7 +80,8 @@ private:
     double target_wheel_speed_ = 0.0;
     double pid_speed_out_      = 0.0;     // wyjście regulatora prędkości
     double pid_omega_actual_   = 0.0;     // aktualna prędkość kątowa kół (z enkoderów)
-    double torque_command_     = 0.0;
+    double torque_command_     = 0.0; // may represent torque or speed command depending on mode
+    double torque_command_to_invert_ = 0.0;
     double steer_command_      = 0.0;
 
     std::string torque_mode_ = 0;  // "torque" lub "speed"

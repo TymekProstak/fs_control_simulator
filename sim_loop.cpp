@@ -20,7 +20,8 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     target_wheel_speed_ = 0.0;
     pid_speed_out_ = 0.0;
     pid_omega_actual_ = 0.0;
-    torque_command_ = 0.0;
+    torque_command_ = 0.0; // may represent torque or speed command depending on mode
+    torque_command_to_invert_ = 0.0;
     steer_command_ = 0.0;
 
     // 3) Interwały krokowe (po wczytaniu P_)
@@ -48,7 +49,11 @@ void Simulation_lem_ros_node::step() {
     shoot_camera_or_enqueue_if_due_();
 
     // 3) Aktualizacja PID (jeśli pracujemy w trybie speed)
-    update_pid_if_due_(); // gdy nie w trybie speed to nie zmieni momentu nie ma co się przejmować 
+    if( torque_mode == 1) update_pid_if_due_(); // 1 - speed , 0 - torque
+
+    else {
+        torque_command_to_invert_ = torque_command_; // w trybie torque bez zmian
+    }
 
     // 4) Publikacje ramek, które „dojrzały” (gotowe po opóźnieniu obliczeń)
     publish_ready_camera_frames_from_queue_();
@@ -56,7 +61,8 @@ void Simulation_lem_ros_node::step() {
 
     // step fizyki układu na razie euler do dyspozycji jest też runne kutta
 
-    euler_sim_timestep(state_,Input(torque_command_,steer_command_) P );
+    euler_sim_timestep(state_,Input(torque_command_to_invert_,steer_command_) P );
+
     // 5) Inkrement kroku
     ++step_number_;
 }
@@ -97,10 +103,11 @@ void Simulation_lem_ros_node::apply_delayed_inputs_if_due_() {
     if (step_number_to_apply_steer_input_ > 0 && step_number_ % step_of_steer_input_application_ == 0_) {
         steer_command_ = last_input_requested_.steer;
     }
-    // Sterowanie momentem
+    // Sterowanie momentem 
     if (step_number_to_apply_torque_input_ > 0 && step_number_ % step_of_torque_input_application_ ==  0) {
-        torque_command_ = last_input_requested_.torque;
-        torque_mode_    =  last_input_requested_.torque_mode; // 0 - torque , 1 - speed
+        torque_command_ = double(last_input_requested_.torque);
+        torque_mode_    =  int(last_input_requested_.torque_mode); // 0 - torque , 1 - speed
+        
     }
 }
 
@@ -172,12 +179,14 @@ void Simulation_lem_ros_node::update_pid_if_due_() {
     if (step_number_ % step_number_pid_update_period_ != 0) return;
 
     
+    target_wheel_speed_ = torque_command_; // tak jest w trybie speed póki co
 
     // głupi pid jak na dv boardzie powiny być możę feedforwqad + antiwidnaup at least ale to do rozwoju sytemu
     double error = target_wheel_speed_ - pid_omega_actual_ * P.get("R");
     pid_prev_I_ += error * (step_number_pid_update_period_ * P_.get("pid_time_step"));
     double u = P.get("pid_p")*error + P.get("pid_i")*pid_prev_I_ + P.get("pid_d")*(error - pid_prev_error_)/P.get("pid_time_step");
     pid_prev_error_ = error;
+    torque_command_to_invert_ = u; 
    
 }
 
