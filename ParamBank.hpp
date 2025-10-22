@@ -1,4 +1,4 @@
-#pragma once
+
 #include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <string>
@@ -139,19 +139,19 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("dealy_from_control_to_maxon_command", JgetReq(J," dv_board.dealy_from_control_to_maxon_command"    ));
   P.add("dealy_from_control_to_torque_command", JgetReq(J, "dv_board.dealy_from_control_to_torque_command"  ));
   P.add("wheel_encoder_reading_time_step", JgetReq(J, "dv_board.wheel_encoder_reading_time_steep"));
+  P.add("pid_time_step", JgetReq(J, "dv_board.pid_time_step"));
   P.add("pid_p", JgetReq(J, "dv_board.pid_p"));
   P.add("pid_i", JgetReq(J, "dv_board.pid_i"));
   P.add("pid_d", JgetReq(J, "dv_board.pid_d"));
 
   // Pose from DRI 
-  P.add("pose_latency", JgetReq(J, "pose.pose_latency")); // hard to estimate probably wont be used
+  // latency not used for now
+  //P.add("pose_latency", JgetReq(J, "pose.pose_latency")); // hard to estimate probably wont be used
   P.add("pose_noise", JgetReq(J, "pose.pose_noise")); 
-  P.add("vel_latency", JgetReq(J, "pose.vel_latency")); // velocitty from dri will have to go as a "delta x/delta t" so wont be used
-  P.add("vel_noise", JgetReq(J, "pose.vel_noise")); // velocitty from dri will have to go as a "delta x/delta t" so wont be used
-  P.add("orientation_latency", JgetReq(J, "pose.orientation_latency")); //  hard to estimate probably wont be used
+  //P.add("orientation_latency", JgetReq(J, "pose.orientation_latency")); //  hard to estimate probably wont be used
   P.add("orientation_noise", JgetReq(J, "pose.orientation_noise")); 
-  P.add("rotation_latency", JgetReq(J, "pose.rotation_latency")); //hard to estimate probably wont be used
   P.add("rotation_noise", JgetReq(J, "pose.rotation_noise"));
+  P.add("ins_frequancy", JgetReq(J, "pose.ins_frequancy")); // 30 Hz
 
   // vision
   P.add("fov_x",JgetReq(J,"vision.fov_x"));
