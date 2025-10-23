@@ -1,89 +1,126 @@
 #include "cone_detector.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <random>
+#include <utility>  // std::move
 
-namespace lem_dynamics_sim_{
+namespace lem_dynamics_sim_ {
 
+/// Zakładane struktury (dla kontekstu):
+/// struct State { double x, y, yaw; };
+/// struct Track_cone { double x, y, z, distance_raw, distance; std::string color; };
+/// struct Track { std::vector<Track_cone> cones; };
+/// struct ParamBank { double get(const std::string& key) const; };
 
-       Track track_in_camera_frame( const State& state, const Track& track_global , const ParamBank& P){
-           
-           Track track_vehicle_frame;
-           
-           
-           double cos_theta = std::cos(state.yaw);
-           double sin_theta = std::sin(state.yaw);
-           
-           for(const auto& cone: track_global.cones)
-          {
-               Track_cone cone_vf;
-               double dx = cone.x - state.x;
-               double dy = cone.y - state.y;
-               cone_vf.x = dx*cos_theta + dy*sin_theta + P.get("x_cog_to_camera"); ;
-               cone_vf.y = -dx*sin_theta + dy*cos_theta + P.get("y_cog_to_camera");
-               cone_vf.z = cone_vf.z + P.get("z_cog_to_camera");
-               cone_vf.color = cone.color;
-               cone_vf.distance = std::sqrt(cone_vf.x *cone_vf.x  + cone_vf.y * cone_vf.y +  cone_vf.z* cone_vf.z );
-               track_vehicle_frame.cones.push_back(cone_vf);
-           }
-           
-           return track_vehicle_frame;
+//// ===========================================================================
+//// 1) Transformacja toru globalnego do układu kamery
+//// ===========================================================================
 
-       }
+Track track_in_camera_frame(const State& state,
+                            const Track& track_global,
+                            const ParamBank& P)
+{
+    Track track_vehicle_frame;
+    track_vehicle_frame.cones.reserve(track_global.cones.size());
 
-        Track shoot_a_frame(const Track&global_track, const ParamBank& P, const State& state){
+    const double cos_yaw = std::cos(state.yaw);
+    const double sin_yaw = std::sin(state.yaw);
 
-        
-            
-          Track local_track = track_in_camera_frame( state, global_track , P);
+    // Prefetch offsetów kamery
+    const double x_cam = P.get("x_cog_to_camera");
+    const double y_cam = P.get("y_cog_to_camera");
+    const double z_cam = P.get("z_cog_to_camera");
 
-          Track visible_track;
+    for (const auto& cone : track_global.cones)
+    {
+        const double dx = cone.x - state.x;
+        const double dy = cone.y - state.y;
 
-          double fov_y = P.get("fov_W"); // W - szerokość zdjęcia kątowa
-          double fov_z = P.get("fov_H") ; // H - wysokość kątowa zdjęcia
+        Track_cone cv;
+        cv.x = dx * cos_yaw + dy * sin_yaw + x_cam;
+        cv.y = -dx * sin_yaw + dy * cos_yaw + y_cam;
+        cv.z = cone.z + z_cam;
+        cv.color = cone.color;
 
-          for(const auto& cone: visible_track.cones){
-                // remove cones outisede of range and outside of FOV
-                if(cone.distance > P.get("max_vision_range") || std::abs(cone.y) > std::tan(fov_y/2) * cone.distance ||  std::abs(cone.z) > std::tan(fov_z/2) * cone.distance ) {
-                    visible_track.cones.erase(std::remove(visible_track.cones.begin(), visible_track.cones.end(), cone), visible_track.cones.end());
-                }
-          }
-         //// === Prawdopodobieństwo wykrycia (model uproszczony) ===
-          std::vector<Track_cone> detected_cones;
-          std::random_device rd;
-          std::mt19937 gen(rd());
-          std::uniform_real_distribution<double> uniform01(0.0, 1.0);
-          std::student_t_distribution<double> t_dist(6.0);  // t-Student df = 6
-          for (const auto& cone : visible_track.cones) {
-            double probability = std::exp(-cone.distance / (1.5 * P.get("camera_range")));
-            if (uniform01(gen) < probability) {
-                detected_cones.push_back(cone);
-            }
-          } 
+        const double dist = fast_sqrt(cv.x * cv.x + cv.y * cv.y + cv.z * cv.z);
+     
+        cv.distance = dist; // przed dodaniem szumu są równe
 
-        //// === Model szumu (t-Student df=6) dla błędów pomiaru pozycji ===
-    double a = 14.4;   // współczynnik z artykułu (dla 2K)
-    double b = 0.144;  // współczynnik z artykułu (dla 2K)
-
-    for (auto& cone : detected_cones) {
-        double RMSE = a * std::exp(b * cone.distance);
-        double var_x = (RMSE * RMSE) / 2.0;
-        double var_y = (RMSE * RMSE) / 2.0;
-
-        // korekta wariancji t-Studenta (df=6 → var=6/(6-2)=1.5)
-        double std_corr = std::sqrt(6.0 / (6.0 - 2.0));
-
-        // losowy szum (niezależny w x i y)
-        double noise_x = std::sqrt(var_x) * (t_dist(gen) / std_corr);
-        double noise_y = std::sqrt(var_y) * (t_dist(gen) / std_corr);
-
-        cone.x += noise_x;
-        cone.y += noise_y;
-
-        // aktualizacja odległości po dodaniu szumu
-        cone.distance = std::sqrt(cone.x * cone.x + cone.y * cone.y + cone.z * cone.z);
+        track_vehicle_frame.cones.emplace_back(std::move(cv));
     }
 
-    visible_track.cones = detected_cones;
-    return visible_track;
+    return track_vehicle_frame;
 }
 
-} // lem_dynamics_sim_
+//// ===========================================================================
+//// 2) Symulacja pojedynczego zdjęcia („shoot_a_frame”)
+////    – filtracja stożków w FOV, model wykrycia, szum pozycji
+//// ===========================================================================
+
+Track shoot_a_frame(const Track& global_track, const ParamBank& P, const State& state)
+{
+    // --- 1. Transformacja do układu kamery
+    Track local = track_in_camera_frame(state, global_track, P);
+
+    // --- 2. Prefetch parametrów
+    const double max_range    = P.get("max_vision_range");
+    const double fov_W        = P.get("fov_W");
+    const double fov_H        = P.get("fov_H");
+    const double tan_W2       = std::tan(0.5 * fov_W);
+    const double tan_H2       = std::tan(0.5 * fov_H);
+    const double camera_range = P.get("camera_range");
+
+    // Parametry błędu
+    constexpr double a = 14.4;
+    constexpr double b = 0.144;
+
+    // Parametry t-Studenta
+    constexpr double df = 6.0;
+    const double std_corr = std::sqrt(df / (df - 2.0));
+
+    // --- 3. RNG (thread_local, by uniknąć kosztów tworzenia)
+    static thread_local std::mt19937 gen{ std::random_device{}() };
+    std::uniform_real_distribution<double> uniform01(0.0, 1.0);
+    std::student_t_distribution<double>    t_dist(df);
+
+    // --- 4. Wynikowy tor z widocznymi stożkami
+    Track visible;
+    visible.cones.reserve(local.cones.size());
+
+    // --- 5. Główna pętla filtracji i symulacji błędu
+    for (auto& c : local.cones)
+    {
+        // (a) Odrzuć stożki za kamerą
+        if (c.x <= 0.0) continue;
+
+        // (b) Odrzuć spoza zasięgu
+        if (c.distance > max_range) continue;
+
+        // (c) Odrzuć spoza pola widzenia
+        if (std::abs(c.y) > tan_W2 * c.x) continue;
+        if (std::abs(c.z) > tan_H2 * c.x) continue;
+
+        // (d) Prawdopodobieństwo wykrycia
+        const double pdet = std::exp(-c.distance / (1.25 * camera_range));
+        if (uniform01(gen) >= pdet) continue;
+
+        // (e) Szum pozycji (t-Student)
+        const double RMSE   = a * fast_exp(b * c.distance);
+        const double std_xy = RMSE * M_SQRT1_2;
+        const double noise_x = std_xy * (t_dist(gen) / std_corr);
+        const double noise_y = std_xy * (t_dist(gen) / std_corr);
+
+        c.x += noise_x;
+        c.y += noise_y;
+
+        // dystancu nie aktualziujmy bo tak nie jest potem używany w pipelinie SLAM
+
+        // (g) Zapis do wynikowego toru
+        visible.cones.emplace_back(std::move(c));
+    }
+
+    return visible;
+}
+
+} // namespace lem_dynamics_sim_
