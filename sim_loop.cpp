@@ -6,8 +6,7 @@ namespace lem_dynamics_sim_ {
 Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
                                                  const std::string& param_file,
                                                  const std::string& track_file,
-                                                 const std::string& /*log_file*/)
-: nh_(nh)
+                                                 const std::string& log_file )
 {
     // 1) Parametry i tor
     P_.loadFromFile(param_file);
@@ -28,11 +27,11 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     compute_step_intervals_from_params_();
 
     // 4) ROS I/O (tematy wstaw wg swojego projektu)
-    sub_control_ = nh_.subscribe<std_msgs::Float64MultiArray>(
-        "/lem/control", 1, &Simulation_lem_ros_node::dv_control_callback, this);
+    sub_control_ = nh_.subscribe<dv::interfaces::Control>(
+        "/dv_board/control", 1, &Simulation_lem_ros_node::dv_control_callback, this, ros::TransportHints().tcpNoDelay());
 
-    pub_ins_   = nh_.advertise<std_msgs::Float64MultiArray>("/lem/ins", 1);
-    pub_cones_ = nh_.advertise<std_msgs::Float64MultiArray>("/lem/cones", 1);
+    pub_ins_   = nh_.advertise<nav_msgs::Odometry >("ins/pose", 1);
+    pub_cones_ = nh_.advertise<dv_interfaces::Cones >("/dv_cone_detector/cones", 1);
 
     // 5) Kolejka kamery pusta na start
     camera_queue_.clear();
@@ -198,21 +197,42 @@ double Simulation_lem_ros_node::random_noise_generator_() const {
 }
 
 // ====== Publikacje (szkielet – dostosuj typy wiadomości/tematy) ======
-void Simulation_lem_ros_node::publish_ins_(const INS_data& ins) {
-    std_msgs::Float64MultiArray msg;
-    msg.data = {ins.x, ins.y, ins.yaw, ins.vx, ins.vy, ins.yaw_rate};
-    pub_ins_.publish(msg);
+
+void Simulation_lem_ros_node::publish_ins_(const INS_data& ins){
+    nav_msgs::Odometry odom_msg{}; // wpisuje we wszytkie pola zera domyślnie
+
+    // Nagłówek: czas i frame_id
+    odom_msg.header.stamp = ros::Time::now();
+    odom_msg.header.frame_id = "map";          // globalny układ odniesienia
+    odom_msg.child_frame_id  = "bolide_CoG";    // lokalny układ pojazdu
+
+    // --- Pozycja ---
+    odom_msg.pose.pose.position.x = ins.x;
+    odom_msg.pose.pose.position.y = ins.y;
+    odom_msg.pose.pose.position.z = 0.0;
+
+    // --- Orientacja (z yaw) ---
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, ins.yaw);
+    odom_msg.pose.pose.orientation.x = q.x();
+    odom_msg.pose.pose.orientation.y = q.y();
+    odom_msg.pose.pose.orientation.z = q.z();
+    odom_msg.pose.pose.orientation.w = q.w();
+
+    // --- Prędkości ---
+    odom_msg.twist.twist.linear.x  = ins.vx;
+    odom_msg.twist.twist.linear.y  = ins.vy;
+    odom_msg.twist.twist.linear.z  = 0.0;
+    odom_msg.twist.twist.angular.z = ins.yaw_rate;
+
+
+    // Publikacja
+    pub_ins_.publish(odom_msg);
 }
 
+
 void Simulation_lem_ros_node::publish_cones_(const Track& cones) {
-    // Przykładowe opakowanie do prostego wektora double (x1,y1,x2,y2,...)
-    std_msgs::Float64MultiArray msg;
-    msg.data.reserve(cones.cones.size() * 2);
-    for (const auto& c : cones.cones) {
-        msg.data.push_back(c.x);
-        msg.data.push_back(c.y);
-    }
-    pub_cones_.publish(msg);
+   
 }
 
 double Simulation_lem_ros_node::sample_vision_exec_time_() const

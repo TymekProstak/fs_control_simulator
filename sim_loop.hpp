@@ -6,7 +6,19 @@
 
 
 #include <ros/ros.h>
-#include <std_msgs/Float64MultiArray.h>
+#include <ros/package.h>
+
+#include <std_msgs/String.h>
+#include <nav_msgs/Odometry.h>
+
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+
+#include <geometry_msgs/PoseArray.h>
+
+#include "dv_interfaces/Control.h"
+#include "dv_interfaces/Cones.h"
+
 
 #include <string>
 #include <deque>
@@ -48,7 +60,7 @@ public:
     Simulation_lem_ros_node(ros::NodeHandle& nh,
                             const std::string& param_file,
                             const std::string& track_file,
-                            const std::string& log_file = std::string());
+                            const std::string& log_file );
 
     // Główny krok symulacji (wykonaj jeden krok)
     void step();
@@ -60,11 +72,10 @@ public:
     int get_step_number() const;
 
     // ROS callback (np. sterowanie z zewnątrz)
-    void dv_control_callback(const std_msgs::Float64MultiArray::ConstPtr& msg);
+    void dv_control_callback(const dv::interfaces::Control msg);
 
 private:
     // ==== ROS ====
-    ros::NodeHandle nh_;
     ros::Subscriber sub_control_;
     ros::Publisher  pub_ins_;
     ros::Publisher  pub_cones_;
@@ -84,7 +95,7 @@ private:
     double torque_command_to_invert_ = 0.0;
     double steer_command_      = 0.0;
 
-    std::string torque_mode_ = 0;  // "torque" lub "speed"
+    int torque_mode_ = 0;  // "torque" lub "speed" - 0 - torque , 1 - speed
 
     // Ostatnie wejście zewnętrzne (zachowane do opóźnionego zastosowania)
     DV_control_input last_input_requested_{0.0, 0.0,0};
@@ -92,6 +103,7 @@ private:
     // Dane do publikacji
     Track    track_to_be_published_;
     INS_data ins_data_to_be_published_;
+    // Ostatnie opublikowane dane INS (do obliczenia pochodnych)
     INS_data last_ins_data_already_published_;
 
     // Licznik kroków
@@ -138,6 +150,8 @@ private:
 
     // Pomoc: zastosowanie opóźnionych wejść sterujących
     void apply_delayed_inputs_if_due_();
+
+    // Pomoc: losowanie czasu obliczeń wizji
     double sample_vision_exec_time_() const; // losuje czas obliczeń wizji [s] z t-Studenta(ν=6)
 };
 

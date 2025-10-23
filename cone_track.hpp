@@ -9,7 +9,7 @@ namespace lem_dynamics_sim_{
         double y; //y  position in global frame , or when used as a result of function track_in_camera_frame,  wr to camera
         double z; // z  position in global frame always 0  or when used as a result of function track_in_camera_frame,  wr to camera
         double distance; // non zero only if when track is considerd with respect to camera
-        std::string color; // eg YELLOW,BLUE
+        std::string color; // eg yellow , blue i tak musi być inaczej się slam zesra bo tam jest dict i to są klucze
         
     };
 
