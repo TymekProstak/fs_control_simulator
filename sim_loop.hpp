@@ -28,6 +28,13 @@
 #include <cmath>
 #include <random>
 
+
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <tf2_ros/transform_broadcaster.h>
+
 /**
  *  Szkielet węzła symulacji LEM + ROS
  *  - obsługa wejść sterujących
@@ -39,6 +46,46 @@
  */
 
 namespace lem_dynamics_sim_ {
+
+
+    static std_msgs::ColorRGBA color_from_class(const std::string& cls, float alpha=0.95f) {
+        std_msgs::ColorRGBA c; c.a = alpha;
+        if (cls == "yellow")      { c.r = 1.0f; c.g = 0.9f; c.b = 0.0f; }
+        else if (cls == "blue")   { c.r = 0.1f; c.g = 0.3f; c.b = 1.0f; }
+        else if (cls == "orange") { c.r = 1.0f; c.g = 0.4f; c.b = 0.0f; }
+        else                      { c.r = 0.6f; c.g = 0.6f; c.b = 0.6f; }
+        return c;
+    }
+    
+    static visualization_msgs::Marker make_cone_marker(
+        int id, const std::string& frame,
+        double x, double y, double z,
+        const std_msgs::ColorRGBA& col,
+        const ros::Duration& lifetime)
+{
+    visualization_msgs::Marker m;
+    m.header.frame_id = frame;
+    m.header.stamp    = ros::Time::now();
+    m.ns   = "cones";
+    m.id   = id;
+    m.type = visualization_msgs::Marker::CYLINDER; // stożek „wizualny” jako cylinder
+    m.action = visualization_msgs::Marker::ADD;
+
+    m.pose.position.x = x;
+    m.pose.position.y = y;
+    m.pose.position.z = z + 0.18; // lekkie podniesienie (wys. ~0.36 m)
+    m.pose.orientation.w = 1.0;
+
+    m.scale.x = 0.28;  // średnica
+    m.scale.y = 0.28;
+    m.scale.z = 0.36;  // wysokość
+
+    m.color = col;
+    m.lifetime = lifetime;
+
+    return m;
+}
+
 
 struct INS_data {
     double x{};
@@ -95,6 +142,16 @@ private:
     double torque_command_to_invert_ = 0.0;
     double steer_command_      = 0.0;
 
+
+    ros::Publisher pub_markers_cones_gt_; // publikacja conów z toru (ground truth)
+    ros::Publisher pub_markers_cones_vis_; // publikacja conów tak jak je widzi kamera (z szumem itp)
+
+
+    ros::Publisher pub_pose_true_;  // publikacja prawdziwej pozycji coga
+    ros::Publisher pub_pose_ins_;   //  publikacja pozycji coga z ins - > ta co ma ramke w sytemie bolide_CoG
+
+    tf2_ros::TransformBroadcaster tf_br_; // do publikacji TF : map -> bolide_CoG , map -> bolide_CoG_true
+
     int torque_mode_ = 0;  // "torque" lub "speed" - 0 - torque , 1 - speed
 
     // Ostatnie wejście zewnętrzne (zachowane do opóźnionego zastosowania)
@@ -123,13 +180,13 @@ private:
     int step_number_to_apply_steer_input_  = 0;
     int step_number_to_apply_torque_input_ = 0;
 
-    // ====== KOLEJKA PRZETWARZANIA KAMERY (modelowanie opóźnienia CPU) ======
+    // ====== KOLEJKA PRZETWARZANIA KAMERY (modelowanie opóźnienia bo obliczenia wizyjne) ======
     struct CameraTask {
         int   ready_step;  // krok, od którego ramka jest gotowa do publikacji
         Track frame;       // wynik detekcji (np. stożków) w układzie kamery
     };
     std::deque<CameraTask> camera_queue_; // max 3 elementy (ograniczenie niżej)
-    std::deque<ros::Time> timestamp_queue_; // max 3 elementy -> czasu zrobienie zdjęć
+    std::deque<ros::Time> timestamp_queue_; // max 3 elementy -> czasy zrobienia zdjęć
 
     // Pomocnicze (los szumu)
     double random_noise_generator_() const;

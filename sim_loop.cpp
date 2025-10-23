@@ -12,6 +12,7 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     P_.loadFromFile(param_file);
     state_.setZero();
     track_global_ = load_track_from_file(track_file);
+    publish_cones_gt_markers_(); // publikacja conów z toru (ground truth) o wiecznym life-time
 
     // 2) PID / sterowanie – reset
     pid_prev_I_ = 0.0;
@@ -23,6 +24,8 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     torque_command_to_invert_ = 0.0;
     steer_command_ = 0.0;
 
+    torque_mode_ = 0; 
+
     // 3) Interwały krokowe (po wczytaniu P_)
     compute_step_intervals_from_params_();
 
@@ -33,8 +36,20 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     pub_ins_   = nh_.advertise<nav_msgs::Odometry >("ins/pose", 1);
     pub_cones_ = nh_.advertise<dv_interfaces::Cones >("/dv_cone_detector/cones", 1);
 
+
+    pub_markers_cones_gt_  = nh_.advertise<visualization_msgs::MarkerArray>("/viz/cones_gt", 1);
+    pub_markers_cones_vis_ = nh_.advertise<visualization_msgs::MarkerArray>("/viz/cones_vis", 1);
+
+
+
+    pub_pose_true_ = nh_.advertise<geometry_msgs::PoseStamped>("/viz/pose_true", 1);
+    pub_pose_ins_  = nh_.advertise<geometry_msgs::PoseStamped>("/viz/pose_ins", 1);
+
     // 5) Kolejka kamery pusta na start
     camera_queue_.clear();
+
+
+
 }
 
 // ====== Interfejs publiczny ======
@@ -48,7 +63,7 @@ void Simulation_lem_ros_node::step() {
     shoot_camera_or_enqueue_if_due_();
 
     // 3) Aktualizacja PID (jeśli pracujemy w trybie speed)
-    if( torque_mode == 1) update_pid_if_due_(); // 1 - speed , 0 - torque
+    if( torque_mode_ == 1) update_pid_if_due_(); // 1 - speed , 0 - torque
 
     else {
         torque_command_to_invert_ = torque_command_; // w trybie torque bez zmian
@@ -58,9 +73,9 @@ void Simulation_lem_ros_node::step() {
     publish_ready_camera_frames_from_queue_();
     
 
-    // step fizyki układu na razie euler do dyspozycji jest też runne kutta
+    // step fizyki układu na razie euler , do dyspozycji jest też runne kutta
 
-    euler_sim_timestep(state_,Input(torque_command_to_invert_,steer_command_) P );
+    euler_sim_timestep(state_,Input(torque_command_to_invert_,steer_command_) ,P );
 
     // 5) Inkrement kroku
     ++step_number_;
@@ -72,12 +87,12 @@ ParamBank Simulation_lem_ros_node::get_parameters() const { return P_; }
 int Simulation_lem_ros_node::get_step_number() const { return step_number_; }
 
 // ====== ROS callback (np. u = [torque, steer]) ======
-void Simulation_lem_ros_node::dv_control_callback(const std_msgs::Float64MultiArray::ConstPtr& msg) {
-    if (msg->data.size() < 3) return;
+void Simulation_lem_ros_node::dv_control_callback(const dv_interfaces::Control &msg) {
+    
     DV_control_input u
-    u.torque = msg->data[0];
-    u.steer  = msg->data[1];
-    u.torque_mode = msg->data[2];
+    u.torque = static_cast<double>(msg.movement);
+    u.steer  = static_cast<double>(msg.steeringAngle_rad);
+    u.torque_mode_ = static_cast<int>(msg.move_type );
     last_input_requested_ = u;
 
 }
@@ -105,7 +120,7 @@ void Simulation_lem_ros_node::apply_delayed_inputs_if_due_() {
     // Sterowanie momentem 
     if (step_number_to_apply_torque_input_ > 0 && step_number_ % step_of_torque_input_application_ ==  0) {
         torque_command_ = double(last_input_requested_.torque);
-        torque_mode_    =  int(last_input_requested_.torque_mode); // 0 - torque , 1 - speed
+        torque_mode_    =  int(last_input_requested_.torque_mode_); // 0 - torque , 1 - speed
         
     }
 }
@@ -136,6 +151,8 @@ void Simulation_lem_ros_node::read_ins_if_due_() {
     // Publikacja bez opóźnienia (jeśli chcesz zasymulować latencję INS – dodaj kolejkę)
     publish_ins_(ins_data_to_be_published_);
     last_ins_data_already_published_ = ins_data_to_be_published_;
+    publish_bolid_tf_ins(); // publikacja tf ins -> gdyby wprowadzic opoźnienia to by trzeba było to zmienić ( że true razem z ins)
+    publish_bolid_tf_true(); // publikacja tf true -> gdyby wprowadzic opoźnienia to by trzeba było to zmienić ( że true razem z ins)
 }
 
 void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_() {
@@ -170,6 +187,7 @@ void Simulation_lem_ros_node::publish_ready_camera_frames_from_queue_() {
         const auto& task = camera_queue_.front();
         const auto& timestamp = timestamp_queue_.front();
         publish_cones_(task.frame, timestamp);
+        publish_cones_vision_markers_(task.frame, timestamp); // markery do Foxglove/RViz
         camera_queue_.pop_front(); // po wysłaniu usuwamy z kolejki
         timestamp_queue_.pop_front();
     }
@@ -184,7 +202,7 @@ void Simulation_lem_ros_node::update_pid_if_due_() {
 
     // głupi pid jak na dv boardzie powiny być możę feedforwqad + antiwidnaup at least ale to do rozwoju sytemu
     double error = target_wheel_speed_ - pid_omega_actual_ * P.get("R");
-    pid_prev_I_ += error * (step_number_pid_update_period_ * P_.get("pid_time_step"));
+    pid_prev_I_ += (error + pid_prev_error_)/2 * P_.get("pid_time_step");
     double u = P.get("pid_p")*error + P.get("pid_i")*pid_prev_I_ + P.get("pid_d")*(error - pid_prev_error_)/P.get("pid_time_step");
     pid_prev_error_ = error;
     torque_command_to_invert_ = u; 
@@ -245,10 +263,10 @@ void Simulation_lem_ros_node::publish_cones_(const Track& cones, ros::Time times
     for (const auto& cone : cones.cones) {
         dv_interfaces::Cone cone_msg;
         cone_msg.confidence = 1.0; // na razie pełne zaufanie i tak nie jest używane
-        cone_msg.x = float32(cone.x);
-        cone_msg.y = float32(cone.y);
-        cone_msg.z = float32(cone.z);
-        cone_msg.distance_uncertainty = cone.distance;
+        cone_msg.x = static_cast<float>(cone.x);
+        cone_msg.y = static_cast<float>(cone.y);
+        cone_msg.z = static_cast<float>(cone.z);
+        cone_msg.distance_uncertainty = static_cast<float>(0); // na raize ustawione pełne zaufanie do streo i tak nie jest używane
         cone_msg.class_name = cone.color; // eg yellow , blue
         cones_msg.cones.push_back(cone_msg);
 
@@ -283,4 +301,74 @@ double Simulation_lem_ros_node::sample_vision_exec_time_() const
     return std::max(exec_time, 0.0);
 }
 
+
+
+
+void Simulation_lem_ros_node::publish_cones_vision_markers_(const Track& det, const ros::Time& acquisition_stamp)
+{
+    visualization_msgs::MarkerArray arr;
+
+    // Usuń poprzednią ramkę wizji (tylko „to co teraz widać”)
+    {
+        visualization_msgs::Marker del;
+        del.header.frame_id = "camera_base";  // takie same jak dodawane
+        del.header.stamp    = ros::Time::now();
+        del.action = visualization_msgs::Marker::DELETEALL;
+        arr.markers.push_back(del);
+    }
+
+    // Lifetime krótki – znikają automatycznie gdy nie ma nowych detekcji
+    const ros::Duration T(std::max(0.05, 1.0 / std::max(P_.get("frames_per_second"), 1e-6)));
+
+    int id = 0;
+    for (const auto& c : det.cones) {
+        auto col = color_from_class(c.color, 0.95f);
+        visualization_msgs::Marker m = make_cone_marker(
+            id++, "camera_base", c.x, c.y, c.z, col, T
+        );
+        // Chcemy zachować czas AKWIZYCJI (ważne do synchronizacji)
+        m.header.stamp = acquisition_stamp;
+        arr.markers.push_back(std::move(m));
+    }
+
+    pub_markers_cones_vis_.publish(arr);
+}
+
+void Simulation_lem_ros_node::publish_bolid_tf_true()
+{
+    geometry_msgs::TransformStamped tf_true;
+    tf_true.header.stamp = ros::Time::now();
+    tf_true.header.frame_id = "map";
+    tf_true.child_frame_id  = "bolide_true";
+    tf_true.transform.translation.x = state_.x;
+    tf_true.transform.translation.y = state_.y;
+    tf_true.transform.translation.z = 0.0;
+    tf2::Quaternion q1; q1.setRPY(0,0,state_.yaw);
+    tf_true.transform.rotation.x = q1.x();
+    tf_true.transform.rotation.y = q1.y();
+    tf_true.transform.rotation.z = q1.z();
+    tf_true.transform.rotation.w = q1.w();
+    tf_br_.sendTransform(tf_true);
+}
+
+void Simulation_lem_ros_node::publish_bolid_tf_ins(const INS_data& ins){
+    geometry_msgs::TransformStamped tf_ins;
+    tf_ins.header.stamp = ros::Time::now();
+    tf_ins.header.frame_id = "map";
+    tf_ins.child_frame_id  = "bolide_CoG";
+    tf_ins.transform.translation.x = ins.x;
+    tf_ins.transform.translation.y = ins.y;
+    tf_ins.transform.translation.z = 0.0;
+    tf2::Quaternion q2; q2.setRPY(0,0,ins.yaw);
+    tf_ins.transform.rotation.x = q2.x();
+    tf_ins.transform.rotation.y = q2.y();
+    tf_ins.transform.rotation.z = q2.z();
+    tf_ins.transform.rotation.w = q2.w();
+    tf_br_.sendTransform(tf_ins);
+}
+
+
 } // namespace lem_dynamics_sim_
+
+
+// czacik napisał wizualizacje conów w sim loopu chuj wie czy dobrze wyglada g
