@@ -129,13 +129,14 @@ private:
         Track frame;       // wynik detekcji (np. stożków) w układzie kamery
     };
     std::deque<CameraTask> camera_queue_; // max 3 elementy (ograniczenie niżej)
+    std::deque<ros::Time> timestamp_queue_; // max 3 elementy -> czasu zrobienie zdjęć
 
     // Pomocnicze (los szumu)
     double random_noise_generator_() const;
 
     // Publikacje (szkielety) — wypełnij wg własnych typów/tematów
     void publish_ins_(const INS_data& ins);
-    void publish_cones_(const Track& cones);
+    void publish_cones_(const Track& cones, ros::Time timestamp);
 
     // Pomoc: inicjalizacja interwałów krokowych na podstawie P_
     void compute_step_intervals_from_params_();

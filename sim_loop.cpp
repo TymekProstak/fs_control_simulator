@@ -132,9 +132,7 @@ void Simulation_lem_ros_node::read_ins_if_due_() {
     ins_data_to_be_published_.yaw = state_.yaw + P_.get("ins_yaw_noise")     * random_noise_generator_();
     ins_data_to_be_published_.vx  = (ins_data_to_be_published_.x - last_ins_data_already_published_.x) / Ts;
     ins_data_to_be_published_.vy  = (ins_data_to_be_published_.y - last_ins_data_already_published_.y) / Ts;
-    ins_data_to_be_published_.yaw_rate =
-        state_.yaw_rate + P_.get("ins_yaw_rate_noise") * random_noise_generator_();
-
+    ins_data_to_be_published_.yaw_rate = state_.yaw_rate + P_.get("ins_yaw_rate_noise") * random_noise_generator_();
     // Publikacja bez opóźnienia (jeśli chcesz zasymulować latencję INS – dodaj kolejkę)
     publish_ins_(ins_data_to_be_published_);
     last_ins_data_already_published_ = ins_data_to_be_published_;
@@ -144,7 +142,7 @@ void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_() {
     if (step_of_camera_shoot_ <= 0) return;
     if (step_number_ % step_of_camera_shoot_ != 0) return;
 
-    // 1) „Zrób zdjęcie” i policz detekcje stożków w układzie kamery
+    // 1) „Zrób zdjęcie" i policz detekcje stożków w układzie kamery
     Track detection = get_cone_detections_in_camera_frame(state_, track_global_, P_);
 
     // 2) Oszacuj koszt obliczeń wizji z t-Studenta(ν=6) na podstawie μ i var z P_
@@ -159,19 +157,23 @@ void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_() {
 
     if ((int)camera_queue_.size() >= 3) {
         camera_queue_.pop_front(); // upuść najstarszą ramkę
+        timestamp_queue_.pop_front(); // upuść odpowiadający timestamp
     }
+
     camera_queue_.push_back(std::move(task));
+    timestamp_queue_.push_back(ros::Time::now());
 }
 
 void Simulation_lem_ros_node::publish_ready_camera_frames_from_queue_() {
-    // Publikuj wszystkie ramki z kolejki, które są już „gotowe”
+    // Publikuj wszystkie ramki z kolejki, które są już „gotowe"
     while (!camera_queue_.empty() && camera_queue_.front().ready_step <= step_number_) {
         const auto& task = camera_queue_.front();
-        publish_cones_(task.frame);
+        const auto& timestamp = timestamp_queue_.front();
+        publish_cones_(task.frame, timestamp);
         camera_queue_.pop_front(); // po wysłaniu usuwamy z kolejki
+        timestamp_queue_.pop_front();
     }
 }
-
 void Simulation_lem_ros_node::update_pid_if_due_() {
     if (torque_mode_ == 0) return;  // w trybie „torque” PID może być nieużywany
     if (step_number_pid_update_period_ <= 0) return;
@@ -231,7 +233,31 @@ void Simulation_lem_ros_node::publish_ins_(const INS_data& ins){
 }
 
 
-void Simulation_lem_ros_node::publish_cones_(const Track& cones) {
+void Simulation_lem_ros_node::publish_cones_(const Track& cones, ros::Time timestamp){
+
+    dv_interfaces::Cones cones_msg;
+
+    // Nagłówek
+    cones_msg.header.stamp = timestamp;
+    cones_msg.header.frame_id = "camera_base"; // układ kamery
+
+    // Wypełnienie detekcji stożków
+    for (const auto& cone : cones.cones) {
+        dv_interfaces::Cone cone_msg;
+        cone_msg.confidence = 1.0; // na razie pełne zaufanie i tak nie jest używane
+        cone_msg.x = float32(cone.x);
+        cone_msg.y = float32(cone.y);
+        cone_msg.z = float32(cone.z);
+        cone_msg.distance_uncertainty = cone.distance;
+        cone_msg.class_name = cone.color; // eg yellow , blue
+        cones_msg.cones.push_back(cone_msg);
+
+
+
+    }
+
+    // Publikacja
+    pub_cones_.publish(cones_msg);
    
 }
 
