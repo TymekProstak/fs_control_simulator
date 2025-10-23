@@ -1,4 +1,4 @@
-
+#pragma once
 #include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <string>
@@ -106,7 +106,7 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("N0",      JgetReq(J,"tire.N0"));
   P.add("epsilon",  JgetReq(J,"tire.epsilon"));
   P.add("relax_time_slip_angle_first_guees", JgetReq(J,"tire.relax_length_slip_angle_piorek"));
-  P.add("relax_time_slip_ratio_first_guees" , 0.3 * P.get("relax_length_slip_angle_first_guees") ) ; // przybliżenie z dupy z wykresu stąd : https://www.researchgate.net/publication/3415307_Tire_Dynamic_Deflection_and_Its_Impact_on_Vehicle_Longitudinal_Dynamics_and_Control
+  P.add("relax_time_slip_ratio_first_guees" , 0.3 * P.get("relax_time_slip_angle_first_guees") ) ; // przybliżenie z dupy z wykresu stąd : https://www.researchgate.net/publication/3415307_Tire_Dynamic_Deflection_and_Its_Impact_on_Vehicle_Longitudinal_Dynamics_and_Control
   P.add("cy",     JgetReq(J,"tire.cy_first_guees")); // wartosc z dupy stąd https://research.tue.nl/en/studentTheses/analysis-and-development-of-formula-student-racing-tyres
   P.add("dy" ,   P.get("cy")* P.get("relax_time_slip_angle_first_guees"));// z dupy z długośći relaksacji i z teorii systemów 2 rzędu 
   P.add("cx",      JgetReq(J,"tire.cx_first_guees")); // wartosc z dupy stąd https://research.tue.nl/en/studentTheses/analysis-and-development-of-formula-student-racing-tyres

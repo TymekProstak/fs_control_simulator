@@ -77,21 +77,21 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
     double vx_rr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_rear);
     double vy_rr = x.vy - x.yaw_rate * r_front*std::cos(angle_construction_rear);
 
-    double vx_rl = x.vy - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
+    double vx_rl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
     double vy_rl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_rear);
 
-    double vx_fr = x.vy + x.yaw_rate * r_rear*std::sin(angle_construction_front);
+    double vx_fr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_front);
     double vy_fr = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
 
-    double vx_fl = x.vy - x.yaw_rate * r_rear*std::sin(angle_construction_front);
+    double vx_fl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_front);
     double vy_fl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
 
     // usuwanie nieregularności przy małych prędkościach w rachunkach slipów - > niefizyczne tylko numeryczne : https://www.amazon.pl/Tire-Vehicle-Dynamics-Hans-Pacejka/dp/0080970168 strona z defincją Magic Fomrula
  
-    double vx_rr_denom = std::sqrt(vx_rr*vx_rr + epsilon*epsilon) ;
-    double vx_rl_denom = std::sqrt(vx_rl*vx_rl +  epsilon*epsilon);
-    double vx_fr_denom = std::sqrt(vx_fr*vx_fr + epsilon*epsilon) ;
-    double vx_fl_denom = std::sqrt(vx_fl*vx_fl + epsilon*epsilon) ;
+    double vx_rr_denom = std::hypot(vx_rr ,epsilon) ;
+    double vx_rl_denom = std::hypot(vx_rl ,epsilon);
+    double vx_fr_denom = std::hypot(vx_fr , epsilon) ;
+    double vx_fl_denom = std::hypot(vx_fl , epsilon) ;
 
     
 
@@ -188,10 +188,10 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
         double Cy_fr = pCy1;
         double Cy_rl = pCy1;
         double Cy_rr = pCy1;
-        double Ky_fl = N0 * pKy1  * std::sin( 2 * std::atan2( N_fl ,(pKy2 * N0)));
-        double Ky_fr = N0 * pKy1  * std::sin(2 * std::atan2( N_fr ,(pKy2 * N0)));
-        double Ky_rl = N0 * pKy1  * std::sin(2 * std::atan2( N_rl ,(pKy2 * N0)));
-        double Ky_rr = N0 * pKy1  * std::sin(2 * std::atan2( N_rr,(pKy2 * N0)));
+        double Ky_fl = N0 * pKy1  * N_fl/(pKy2 * N0) /( 1 + (N_fl/(pKy2 * N0))*(N_fl/(pKy2 * N0)) ) ;
+        double Ky_fr = N0 * pKy1  * N_fr/(pKy2 * N0) /( 1 + (N_fr/(pKy2 * N0))*(N_fr/(pKy2 * N0)) ) ;
+        double Ky_rl = N0 * pKy1  * N_rl/(pKy2 * N0) /( 1 + (N_rl/(pKy2 * N0))*(N_rl/(pKy2 * N0)) ) ;
+        double Ky_rr = N0 * pKy1  * N_rr/(pKy2 * N0) /( 1 + (N_rr/(pKy2 * N0))*(N_rr/(pKy2 * N0)) ) ;
         double By_fl = Ky_fl/Cy_fl/Dy_fl/N_fl ;
         double By_fr = Ky_fr/Cy_fr/Dy_fr/N_fr  ;
         double By_rl = Ky_rl/Cy_rl/Dy_rl/N_rl  ;
