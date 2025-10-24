@@ -102,7 +102,7 @@ Track shoot_a_frame(const Track& global_track, const ParamBank& P, const State& 
         if (std::abs(c.z) > tan_H2 * c.x) continue;
 
         // (d) Prawdopodobieństwo wykrycia
-        const double pdet = std::exp(-c.distance / (1.25 * camera_range));
+        const double pdet = std::exp(-c.distance / (1.5 * camera_range));
         if (uniform01(gen) >= pdet) continue;
 
         // (e) Szum pozycji (t-Student)

@@ -44,9 +44,9 @@ namespace lem_dynamics_sim_{
     // fukncja do liczenia loga przydatnych rzeczy z informacji o stanie pojazdu w danym kroku symulacji
 
 
-    Log_Info log_info(const State& x, const Input& u, const ParamBank& P , int step_number){
+    Log_Info_full log_info_full(const State& x, const Input& u, const ParamBank& P , int step_number){
 
-        Log_Info info;
+        Log_Info_full info;
 
 
         double m = P.get("m");

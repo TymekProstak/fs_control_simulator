@@ -9,7 +9,32 @@
 
 namespace lem_dynamics_sim_{
 
-    struct Log_Info{
+    struct Log_Info_reduced{
+
+        double vx; // m/s
+        double vy; // m/s
+        double yaw_rate; // rad/s
+        double x; // m
+        double y; // m
+        double yaw; // rad
+
+        double torque; // Nm
+        double rack_angle; // deg
+
+        
+        double kappa_rl; // nondim
+        double kappa_rr; // nondim
+
+        double time; // s
+        double rack_angle_request; // deg
+        double torque_request; // Nm
+
+        double ax; // g units
+        double ay; // g units
+        
+    };
+
+    struct Log_Info_full{
 
 
         double kappa_fl; // nondim
@@ -73,8 +98,10 @@ namespace lem_dynamics_sim_{
 
     };
 
+    Log_Info_reduced log_info_reduced(const State& x, const Input& u, const ParamBank& P , int step_number);
+
     State model_derative(const ParamBank& P, const  State& x, const Input& u);
-    Log_Info log_info(const State& x, const Input& u, const ParamBank& P , int step_number);
+    Log_Info_full log_info_full(const State& x, const Input& u, const ParamBank& P , int step_number);
     void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P);
     void euler_sim_timestep(State& x, const Input& u, const ParamBank& P);
 

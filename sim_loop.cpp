@@ -20,41 +20,52 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     target_wheel_speed_ = 0.0;
     pid_speed_out_ = 0.0;
     pid_omega_actual_ = 0.0;
-    torque_command_ = 0.0; // may represent torque or speed command depending on mode
+    torque_command_ = 0.0; 
     torque_command_to_invert_ = 0.0;
     steer_command_ = 0.0;
-
     torque_mode_ = 0; 
 
     // 3) Interwały krokowe (po wczytaniu P_)
     compute_step_intervals_from_params_();
 
-    // 4) ROS I/O (tematy wstaw wg swojego projektu)
-    sub_control_ = nh_.subscribe<dv::interfaces::Control>(
+    // 4) ROS I/O 
+    sub_control_ = nh.subscribe<dv::interfaces::Control>(
         "/dv_board/control", 1, &Simulation_lem_ros_node::dv_control_callback, this, ros::TransportHints().tcpNoDelay());
 
-    pub_ins_   = nh_.advertise<nav_msgs::Odometry >("ins/pose", 1);
-    pub_cones_ = nh_.advertise<dv_interfaces::Cones >("/dv_cone_detector/cones", 1);
+    pub_ins_   = nh.advertise<nav_msgs::Odometry>("ins/pose", 1);
+    pub_cones_ = nh.advertise<dv_interfaces::Cones>("/dv_cone_detector/cones", 1);
+    pub_markers_cones_gt_  = nh.advertise<visualization_msgs::MarkerArray>("/viz/cones_gt", 1);
+    pub_markers_cones_vis_ = nh.advertise<visualization_msgs::MarkerArray>("/viz/cones_vis", 1);
 
+    // 5) Logowanie - domyślnie wyłączone
+    if (!log_file.empty()) {
+        log_file_.open(log_file, std::ios::out);
+        if (log_file_.is_open()) {
+            logging_enabled_ = true;
+            log_file_ << "time,x,y,yaw,vx,vy,yaw_rate,torque,steer,"
+                         "omega_rr,omega_rl,torque_request,steer_request,ax,ay\n";
+            start_logging_thread_();
+        } else {
+            ROS_WARN("Nie udało się otworzyć pliku logowania: %s", log_file.c_str());
+        }
+    }
 
-    pub_markers_cones_gt_  = nh_.advertise<visualization_msgs::MarkerArray>("/viz/cones_gt", 1);
-    pub_markers_cones_vis_ = nh_.advertise<visualization_msgs::MarkerArray>("/viz/cones_vis", 1);
-
-
-
-    pub_pose_true_ = nh_.advertise<geometry_msgs::PoseStamped>("/viz/pose_true", 1);
-    pub_pose_ins_  = nh_.advertise<geometry_msgs::PoseStamped>("/viz/pose_ins", 1);
-
-    // 5) Kolejka kamery pusta na start
+    // 6) Kolejka kamery pusta na start
     camera_queue_.clear();
+}
 
-
-
+// ====== Destruktor ======
+Simulation_lem_ros_node::~Simulation_lem_ros_node() {
+    stop_logging_thread_();
+    if (log_file_.is_open()) {
+        log_file_.flush();
+        log_file_.close();
+    }
 }
 
 // ====== Interfejs publiczny ======
 void Simulation_lem_ros_node::step() {
-    // 1) Zastosuj wejścia z opóźnieniem (jeśli nadszedł czas)
+    // 1) Zastosuj wejścia z opóźnieniem
     apply_delayed_inputs_if_due_();
 
     // 2) Odczyty czujników wg harmonogramu
@@ -62,83 +73,71 @@ void Simulation_lem_ros_node::step() {
     read_ins_if_due_();
     shoot_camera_or_enqueue_if_due_();
 
-    // 3) Aktualizacja PID (jeśli pracujemy w trybie speed)
-    if( torque_mode_ == 1) update_pid_if_due_(); // 1 - speed , 0 - torque
+    // 3) Aktualizacja PID
+    if (torque_mode_ == 1)
+        update_pid_if_due_(); // tryb speed
+    else
+        torque_command_to_invert_ = torque_command_; // tryb torque
 
-    else {
-        torque_command_to_invert_ = torque_command_; // w trybie torque bez zmian
-    }
-
-    // 4) Publikacje ramek, które „dojrzały” (gotowe po opóźnieniu obliczeń)
+    // 4) Publikacje ramek, które „dojrzały”
     publish_ready_camera_frames_from_queue_();
-    
 
-    // step fizyki układu na razie euler , do dyspozycji jest też runne kutta
+    // 5) Krok fizyki (Euler)
+    euler_sim_timestep(state_, Input(torque_command_to_invert_, steer_command_), P_);
 
-    euler_sim_timestep(state_,Input(torque_command_to_invert_,steer_command_) ,P );
+    // 6) Logowanie co 10 kroków
+    if (logging_enabled_ && step_number_ % 10 == 0)
+        log_state_();
 
-    // 5) Inkrement kroku
+    // 7) Inkrement kroku
     ++step_number_;
 }
-
 
 State Simulation_lem_ros_node::get_state() const { return state_; }
 ParamBank Simulation_lem_ros_node::get_parameters() const { return P_; }
 int Simulation_lem_ros_node::get_step_number() const { return step_number_; }
 
-// ====== ROS callback (np. u = [torque, steer]) ======
+// ====== ROS callback ======
 void Simulation_lem_ros_node::dv_control_callback(const dv_interfaces::Control &msg) {
-    
-    DV_control_input u
+    DV_control_input u;
     u.torque = static_cast<double>(msg.movement);
     u.steer  = static_cast<double>(msg.steeringAngle_rad);
-    u.torque_mode_ = static_cast<int>(msg.move_type );
+    u.torque_mode = static_cast<int>(msg.move_type);
     last_input_requested_ = u;
-
 }
 
 // ====== Pomocnicze ======
 void Simulation_lem_ros_node::compute_step_intervals_from_params_() {
     const double dt = P_.get("simulation_time_step");
 
-    // Częstotliwości → kroki
     step_of_camera_shoot_          = std::max(1, (int)std::round(1.0 / P_.get("frames_per_second") / dt));
     step_of_wheel_encoder_reading_ = std::max(1, (int)std::round(P_.get("wheel_encoder_reading_time_step") / dt));
     step_of_ins_reading_           = std::max(1, (int)std::round(1.0 / P_.get("ins_frequancy") / dt));
-
     step_of_torque_input_application_ = std::max(1, (int)std::round(P_.get("torque_input_delay") / dt));
     step_of_steer_input_application_  = std::max(1, (int)std::round(P_.get("steer_input_delay") / dt));
-
     step_number_pid_update_period_    = std::max(1, (int)std::round(P_.get("pid_time_step") / dt));
 }
 
 void Simulation_lem_ros_node::apply_delayed_inputs_if_due_() {
-    // Sterowanie skrętem
-    if (step_number_to_apply_steer_input_ > 0 && step_number_ % step_of_steer_input_application_ == 0_) {
+    if (step_number_to_apply_steer_input_ > 0 && step_number_ % step_of_steer_input_application_ == 0) {
         steer_command_ = last_input_requested_.steer;
     }
-    // Sterowanie momentem 
-    if (step_number_to_apply_torque_input_ > 0 && step_number_ % step_of_torque_input_application_ ==  0) {
+    if (step_number_to_apply_torque_input_ > 0 && step_number_ % step_of_torque_input_application_ == 0) {
         torque_command_ = double(last_input_requested_.torque);
-        torque_mode_    =  int(last_input_requested_.torque_mode_); // 0 - torque , 1 - speed
-        
+        torque_mode_    = int(last_input_requested_.torque_mode);
     }
 }
 
 void Simulation_lem_ros_node::read_wheel_encoder_if_due_() {
     if (step_of_wheel_encoder_reading_ <= 0) return;
     if (step_number_ % step_of_wheel_encoder_reading_ != 0) return;
-
-    // Przykładowy „odczyt” – uśrednienie tylnych kół (dostosuj do modelu)
     pid_omega_actual_ = (state_.omega_rr + state_.omega_rl) * 0.5;
-    // TODO: jeżeli są opóźnienia/latencje enkodera, dodaj własną kolejkę analogiczną do kamery
 }
 
 void Simulation_lem_ros_node::read_ins_if_due_() {
     if (step_of_ins_reading_ <= 0) return;
     if (step_number_ % step_of_ins_reading_ != 0) return;
 
-    // Dodaj szumy pomiarowe INS i proste pochodne „z różniczki”
     const double f_ins = P_.get("ins_frequancy");
     const double Ts    = 1.0 / std::max(1e-6, f_ins);
 
@@ -148,33 +147,30 @@ void Simulation_lem_ros_node::read_ins_if_due_() {
     ins_data_to_be_published_.vx  = (ins_data_to_be_published_.x - last_ins_data_already_published_.x) / Ts;
     ins_data_to_be_published_.vy  = (ins_data_to_be_published_.y - last_ins_data_already_published_.y) / Ts;
     ins_data_to_be_published_.yaw_rate = state_.yaw_rate + P_.get("ins_yaw_rate_noise") * random_noise_generator_();
-    // Publikacja bez opóźnienia (jeśli chcesz zasymulować latencję INS – dodaj kolejkę)
+
     publish_ins_(ins_data_to_be_published_);
     last_ins_data_already_published_ = ins_data_to_be_published_;
-    publish_bolid_tf_ins(); // publikacja tf ins -> gdyby wprowadzic opoźnienia to by trzeba było to zmienić ( że true razem z ins)
-    publish_bolid_tf_true(); // publikacja tf true -> gdyby wprowadzic opoźnienia to by trzeba było to zmienić ( że true razem z ins)
+
+    publish_bolid_tf_ins(ins_data_to_be_published_);
+    publish_bolid_tf_true();
 }
 
 void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_() {
     if (step_of_camera_shoot_ <= 0) return;
     if (step_number_ % step_of_camera_shoot_ != 0) return;
 
-    // 1) „Zrób zdjęcie" i policz detekcje stożków w układzie kamery
     Track detection = get_cone_detections_in_camera_frame(state_, track_global_, P_);
+    const double dt = P_.get("simulation_time_step");
+    const double vision_exec_time = sample_vision_exec_time_();
+    const int processing_steps = std::max(0, (int)std::round(vision_exec_time / dt));
 
-    // 2) Oszacuj koszt obliczeń wizji z t-Studenta(ν=6) na podstawie μ i var z P_
-    const double dt               = P_.get("simulation_time_step");
-    const double vision_exec_time = sample_vision_exec_time_();            // [s]
-    const int    processing_steps = std::max(0, (int)std::round(vision_exec_time / dt));
-
-    // 3) Zbuduj zadanie i wstaw do kolejki (max 3 elementy)
     CameraTask task;
     task.ready_step = step_number_ + processing_steps;
     task.frame      = std::move(detection);
 
     if ((int)camera_queue_.size() >= 3) {
-        camera_queue_.pop_front(); // upuść najstarszą ramkę
-        timestamp_queue_.pop_front(); // upuść odpowiadający timestamp
+        camera_queue_.pop_front();
+        timestamp_queue_.pop_front();
     }
 
     camera_queue_.push_back(std::move(task));
@@ -182,56 +178,46 @@ void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_() {
 }
 
 void Simulation_lem_ros_node::publish_ready_camera_frames_from_queue_() {
-    // Publikuj wszystkie ramki z kolejki, które są już „gotowe"
     while (!camera_queue_.empty() && camera_queue_.front().ready_step <= step_number_) {
         const auto& task = camera_queue_.front();
         const auto& timestamp = timestamp_queue_.front();
         publish_cones_(task.frame, timestamp);
-        publish_cones_vision_markers_(task.frame, timestamp); // markery do Foxglove/RViz
-        camera_queue_.pop_front(); // po wysłaniu usuwamy z kolejki
+        publish_cones_vision_markers_(task.frame, timestamp);
+        camera_queue_.pop_front();
         timestamp_queue_.pop_front();
     }
 }
+
 void Simulation_lem_ros_node::update_pid_if_due_() {
-    if (torque_mode_ == 0) return;  // w trybie „torque” PID może być nieużywany
+    if (torque_mode_ == 0) return;
     if (step_number_pid_update_period_ <= 0) return;
     if (step_number_ % step_number_pid_update_period_ != 0) return;
 
-    
-    target_wheel_speed_ = torque_command_; // tak jest w trybie speed póki co
-
-    // głupi pid jak na dv boardzie powiny być możę feedforwqad + antiwidnaup at least ale to do rozwoju sytemu
-    double error = target_wheel_speed_ - pid_omega_actual_ * P.get("R");
-    pid_prev_I_ += (error + pid_prev_error_)/2 * P_.get("pid_time_step");
-    double u = P.get("pid_p")*error + P.get("pid_i")*pid_prev_I_ + P.get("pid_d")*(error - pid_prev_error_)/P.get("pid_time_step");
+    target_wheel_speed_ = torque_command_;
+    double error = target_wheel_speed_ - pid_omega_actual_ * P_.get("R");
+    pid_prev_I_ += (error + pid_prev_error_) / 2 * P_.get("pid_time_step");
+    double u = P_.get("pid_p") * error +
+               P_.get("pid_i") * pid_prev_I_ +
+               P_.get("pid_d") * (error - pid_prev_error_) / P_.get("pid_time_step");
     pid_prev_error_ = error;
     torque_command_to_invert_ = u; 
-   
 }
 
 double Simulation_lem_ros_node::random_noise_generator_() const {
-    // Prosty białoszum ~ N(0,1)
     static thread_local std::mt19937 rng{std::random_device{}()};
     static thread_local std::normal_distribution<double> N01(0.0, 1.0);
     return N01(rng);
 }
 
-// ====== Publikacje (szkielet – dostosuj typy wiadomości/tematy) ======
-
 void Simulation_lem_ros_node::publish_ins_(const INS_data& ins){
-    nav_msgs::Odometry odom_msg{}; // wpisuje we wszytkie pola zera domyślnie
-
-    // Nagłówek: czas i frame_id
+    nav_msgs::Odometry odom_msg{};
     odom_msg.header.stamp = ros::Time::now();
-    odom_msg.header.frame_id = "map";          // globalny układ odniesienia
-    odom_msg.child_frame_id  = "bolide_CoG";    // lokalny układ pojazdu
-
-    // --- Pozycja ---
+    odom_msg.header.frame_id = "map";
+    odom_msg.child_frame_id  = "bolide_CoG";
     odom_msg.pose.pose.position.x = ins.x;
     odom_msg.pose.pose.position.y = ins.y;
     odom_msg.pose.pose.position.z = 0.0;
 
-    // --- Orientacja (z yaw) ---
     tf2::Quaternion q;
     q.setRPY(0.0, 0.0, ins.yaw);
     odom_msg.pose.pose.orientation.x = q.x();
@@ -239,103 +225,62 @@ void Simulation_lem_ros_node::publish_ins_(const INS_data& ins){
     odom_msg.pose.pose.orientation.z = q.z();
     odom_msg.pose.pose.orientation.w = q.w();
 
-    // --- Prędkości ---
     odom_msg.twist.twist.linear.x  = ins.vx;
     odom_msg.twist.twist.linear.y  = ins.vy;
-    odom_msg.twist.twist.linear.z  = 0.0;
     odom_msg.twist.twist.angular.z = ins.yaw_rate;
 
-
-    // Publikacja
     pub_ins_.publish(odom_msg);
 }
 
-
 void Simulation_lem_ros_node::publish_cones_(const Track& cones, ros::Time timestamp){
-
     dv_interfaces::Cones cones_msg;
-
-    // Nagłówek
     cones_msg.header.stamp = timestamp;
-    cones_msg.header.frame_id = "camera_base"; // układ kamery
-
-    // Wypełnienie detekcji stożków
+    cones_msg.header.frame_id = "camera_base";
     for (const auto& cone : cones.cones) {
         dv_interfaces::Cone cone_msg;
-        cone_msg.confidence = 1.0; // na razie pełne zaufanie i tak nie jest używane
+        cone_msg.confidence = 1.0;
         cone_msg.x = static_cast<float>(cone.x);
         cone_msg.y = static_cast<float>(cone.y);
         cone_msg.z = static_cast<float>(cone.z);
-        cone_msg.distance_uncertainty = static_cast<float>(0); // na raize ustawione pełne zaufanie do streo i tak nie jest używane
-        cone_msg.class_name = cone.color; // eg yellow , blue
+        cone_msg.distance_uncertainty = 0.0f;
+        cone_msg.class_name = cone.color;
         cones_msg.cones.push_back(cone_msg);
-
-
-
     }
-
-    // Publikacja
     pub_cones_.publish(cones_msg);
-   
 }
 
-double Simulation_lem_ros_node::sample_vision_exec_time_() const
-{
-    // Parametry z ParamBank (sekundy i sekundy^2)
-    const double mu   = P_.get("vision.mean_time_of_vision_execuction");   // średni czas [s]
-    const double var  = P_.get("vision.var_of_vision_time_execution");     // wariancja [s^2]
-
-    // t-Student z ν=6 (wg Twojej prośby); dla ν>2 wariancja t wynosi ν/(ν-2)
+double Simulation_lem_ros_node::sample_vision_exec_time_() const {
+    const double mu  = P_.get("vision.mean_time_of_vision_execuction");
+    const double var = P_.get("vision.var_of_vision_time_execution");
     constexpr int df = 6;
-    const double t_var = double(df) / double(df - 2);           // = 6/4 = 1.5
-    const double t_std = std::sqrt(t_var);
-
+    const double t_std = std::sqrt(double(df) / double(df - 2));
     static thread_local std::mt19937 rng{std::random_device{}()};
     std::student_t_distribution<double> t_dist(df);
-
-    // z ~ t_ν, standaryzujemy do wariancji 1 i skalujemy do docelowej wariancji
-    const double z_unitvar = t_dist(rng) / t_std;                // var ≈ 1
-    const double exec_time = mu + std::sqrt(std::max(0.0, var)) * z_unitvar;
-
-    // Czas nie może być ujemny
+    const double z = t_dist(rng) / t_std;
+    const double exec_time = mu + std::sqrt(std::max(0.0, var)) * z;
     return std::max(exec_time, 0.0);
 }
 
-
-
-
-void Simulation_lem_ros_node::publish_cones_vision_markers_(const Track& det, const ros::Time& acquisition_stamp)
-{
+void Simulation_lem_ros_node::publish_cones_vision_markers_(const Track& det, const ros::Time& acquisition_stamp) {
     visualization_msgs::MarkerArray arr;
+    visualization_msgs::Marker del;
+    del.header.frame_id = "camera_base";
+    del.header.stamp    = ros::Time::now();
+    del.action = visualization_msgs::Marker::DELETEALL;
+    arr.markers.push_back(del);
 
-    // Usuń poprzednią ramkę wizji (tylko „to co teraz widać”)
-    {
-        visualization_msgs::Marker del;
-        del.header.frame_id = "camera_base";  // takie same jak dodawane
-        del.header.stamp    = ros::Time::now();
-        del.action = visualization_msgs::Marker::DELETEALL;
-        arr.markers.push_back(del);
-    }
-
-    // Lifetime krótki – znikają automatycznie gdy nie ma nowych detekcji
     const ros::Duration T(std::max(0.05, 1.0 / std::max(P_.get("frames_per_second"), 1e-6)));
-
     int id = 0;
     for (const auto& c : det.cones) {
         auto col = color_from_class(c.color, 0.95f);
-        visualization_msgs::Marker m = make_cone_marker(
-            id++, "camera_base", c.x, c.y, c.z, col, T
-        );
-        // Chcemy zachować czas AKWIZYCJI (ważne do synchronizacji)
+        visualization_msgs::Marker m = make_cone_marker(id++, "camera_base", c.x, c.y, c.z, col, T);
         m.header.stamp = acquisition_stamp;
         arr.markers.push_back(std::move(m));
     }
-
     pub_markers_cones_vis_.publish(arr);
 }
 
-void Simulation_lem_ros_node::publish_bolid_tf_true()
-{
+void Simulation_lem_ros_node::publish_bolid_tf_true() {
     geometry_msgs::TransformStamped tf_true;
     tf_true.header.stamp = ros::Time::now();
     tf_true.header.frame_id = "map";
@@ -343,7 +288,7 @@ void Simulation_lem_ros_node::publish_bolid_tf_true()
     tf_true.transform.translation.x = state_.x;
     tf_true.transform.translation.y = state_.y;
     tf_true.transform.translation.z = 0.0;
-    tf2::Quaternion q1; q1.setRPY(0,0,state_.yaw);
+    tf2::Quaternion q1; q1.setRPY(0, 0, state_.yaw);
     tf_true.transform.rotation.x = q1.x();
     tf_true.transform.rotation.y = q1.y();
     tf_true.transform.rotation.z = q1.z();
@@ -359,7 +304,7 @@ void Simulation_lem_ros_node::publish_bolid_tf_ins(const INS_data& ins){
     tf_ins.transform.translation.x = ins.x;
     tf_ins.transform.translation.y = ins.y;
     tf_ins.transform.translation.z = 0.0;
-    tf2::Quaternion q2; q2.setRPY(0,0,ins.yaw);
+    tf2::Quaternion q2; q2.setRPY(0, 0, ins.yaw);
     tf_ins.transform.rotation.x = q2.x();
     tf_ins.transform.rotation.y = q2.y();
     tf_ins.transform.rotation.z = q2.z();
@@ -367,8 +312,70 @@ void Simulation_lem_ros_node::publish_bolid_tf_ins(const INS_data& ins){
     tf_br_.sendTransform(tf_ins);
 }
 
+// ====== Logger równoległy ======
+void Simulation_lem_ros_node::start_logging_thread_() {
+    if (!logging_enabled_) return;
+    logging_thread_running_ = true;
+    log_file_.rdbuf()->pubsetbuf(nullptr, 1 << 20);
+    log_thread_ = std::thread([this]() {
+        std::string batch;
+        batch.reserve(1 << 18);
+        while (logging_thread_running_) {
+            {
+                std::unique_lock<std::mutex> lock(log_mutex_);
+                log_cv_.wait_for(lock, std::chrono::milliseconds(50),
+                                 [this]() { return !log_queue_.empty() || !logging_thread_running_; });
+                while (!log_queue_.empty()) {
+                    batch += std::move(log_queue_.front());
+                    log_queue_.pop();
+                }
+            }
+            if (!batch.empty()) {
+                log_file_ << batch;
+                batch.clear();
+            }
+        }
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        while (!log_queue_.empty()) {
+            log_file_ << std::move(log_queue_.front());
+            log_queue_.pop();
+        }
+        log_file_.flush();
+    });
+}
+
+void Simulation_lem_ros_node::stop_logging_thread_() {
+    if (!logging_enabled_) return;
+    logging_thread_running_ = false;
+    log_cv_.notify_all();
+    if (log_thread_.joinable()) log_thread_.join();
+}
+
+void Simulation_lem_ros_node::log_state_() {
+    std::ostringstream oss;
+    oss.precision(5);
+    oss.setf(std::ios::fixed);
+    const float t = static_cast<float>(step_number_ * P_.get("simulation_time_step"));
+    oss << t << ","
+        << static_cast<float>(state_.x) << ","
+        << static_cast<float>(state_.y) << ","
+        << static_cast<float>(state_.yaw) << ","
+        << static_cast<float>(state_.vx) << ","
+        << static_cast<float>(state_.vy) << ","
+        << static_cast<float>(state_.yaw_rate) << ","
+        << static_cast<float>(state_.torque) << ","
+        << static_cast<float>(state_.rack_angle * M_PI / 180.0f) << ","
+        << static_cast<float>(state_.omega_rr) << ","
+        << static_cast<float>(state_.omega_rl) << ","
+        << static_cast<float>(torque_command_) << ","
+        << static_cast<float>(steer_command_ * M_PI / 180.0f) << ","
+        << static_cast<float>(state_.ax / 9.81f) << ","
+        << static_cast<float>(state_.ay / 9.81f) << "\n";
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_queue_.push(oss.str());
+    }
+    log_cv_.notify_one();
+}
 
 } // namespace lem_dynamics_sim_
-
-
-// czacik napisał wizualizacje conów w sim loopu chuj wie czy dobrze wyglada g
