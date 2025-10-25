@@ -15,22 +15,28 @@ int main(int argc, char** argv)
 
     // ====== 1) Pobranie parametrów z launcha lub ustawienie domyślnych ======
     std::string param_file, track_file, log_file;
+    bool logging_enabled_param ;
 
-    nh.param<std::string>("param_file", param_file,
-        (fs::current_path() / "config" / "params.json").string());
-    nh.param<std::string>("track_file", track_file,
-        (fs::current_path() / "tracks" / "track.json").string());
-    nh.param<std::string>("log_file", log_file,
-        (fs::current_path() / "logs" / "sim_log.csv").string());
+    if (!nh.getParam("param_file", param_file))
+    throw std::runtime_error("Missing required param: param_file");
+
+    if (!nh.getParam("track_file", track_file))
+    throw std::runtime_error("Missing required param: track_file");
+
+    if (!nh.getParam("log_file", log_file))
+    throw std::runtime_error("Missing required param: log_file");
+
+    if (! nh.getParam("logging_enabled", logging_enabled_param))
+    throw std::runtime_error("Missing required param: logging_enabled");
+
+   
 
     ROS_INFO_STREAM("LEM Simulation node starting...");
     ROS_INFO_STREAM("  → param_file = " << param_file);
     ROS_INFO_STREAM("  → track_file = " << track_file);
     ROS_INFO_STREAM("  → log_file   = " << log_file);
 
-    bool logging_enabled_param;
-    nh.param<bool>("logging_enabled", logging_enabled_param, false); // logowanie domyślnie wyłączone ->
-    // gdy na false to konstruktor dostanie pusty string jako log_file -> nie będzie logował
+   
 
     // ====== 2) Inicjalizacja symulatora ======
     Simulation_lem_ros_node sim(nh, param_file, track_file,

@@ -1,21 +1,60 @@
-cmake_minimum_required(VERSION 3.10)
-project(fs_control_simulator)
+cmake_minimum_required(VERSION 3.7)  
 
-# Ustawienia kompilatora
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+project(lem_simulator)
 
-# Znajdź wymagane biblioteki
+add_compile_options(-std=c++17)
+
+set(CMAKE_CXX_STANDARD 17)  
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")  # Dodanie optymalizacji
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+  geometry_msgs
+  nav_msgs
+  visualization_msgs
+  tf
+  dv_interfaces
+
+)
+
+
+## Find external libraries
 find_package(Eigen3 REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-# Dodaj plik wykonywalny dla testu cone_detector
-add_executable(test_cone_detector
-    test_cone_detector.cpp
-    cone_detector.cpp
-    utiliities.cpp
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS roscpp std_msgs geometry_msgs nav_msgs visualization_msgs tf dv_interfaces
 )
 
-# Dołącz katalogi nagłówkowe
-target_include_directories(test_cone_detector PRIVATE ${EIGEN3_INCLUDE_DIR})
-target_link_libraries(test_cone_detector PRIVATE nlohmann_json::nlohmann_json)
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}  
+)
+set( simSRC
+  src_helpers/cone_detector.cpp
+  src_helpers/cone_track.cpp
+  src_helpers/double_track.cpp
+  src_helpers/steering_system.cpp
+  src_helpers/tire_model.cpp
+  src_helpers/utiliities.cpp
+)
+add_executable(sim_loop_node  
+    main.cpp
+    sim_loop.cpp
+    ${simSRC}  
+)
+
+target_link_libraries(sim_loop_node
+    ${catkin_LIBRARIES}
+    nlohmann_json::nlohmann_json
+    Eigen3::Eigen
+    m
+)
+
+
+

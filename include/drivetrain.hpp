@@ -27,6 +27,8 @@ namespace lem_dynamics_sim_{
             temp.torque_left = 0.0;
         }
 
+        
+
     
         return temp;
     }
