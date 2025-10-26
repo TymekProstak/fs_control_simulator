@@ -32,7 +32,7 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     sub_control_ = nh.subscribe<dv::interfaces::Control>(
         "/dv_board/control", 1, &Simulation_lem_ros_node::dv_control_callback, this, ros::TransportHints().tcpNoDelay());
 
-    pub_ins_   = nh.advertise<nav_msgs::Odometry>("ins/pose", 1);
+    pub_ins_   = nh.advertise<nav_msgs::Odometry>("/ins/pose", 1);
     pub_cones_ = nh.advertise<dv_interfaces::Cones>("/dv_cone_detector/cones", 1);
     pub_markers_cones_gt_  = nh.advertise<visualization_msgs::MarkerArray>("/viz/cones_gt", 1);
     pub_markers_cones_vis_ = nh.advertise<visualization_msgs::MarkerArray>("/viz/cones_vis", 1);
