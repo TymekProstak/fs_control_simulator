@@ -20,6 +20,7 @@
 #include "dv_interfaces/Control.h"
 #include "dv_interfaces/Cone.h"
 #include "dv_interfaces/Cones.h"
+#include "dv_interfaces/full_state.h"
 
 #include <string>
 #include <deque>
@@ -131,8 +132,7 @@ public:
     int get_step_number() const;
 
     // ====== ROS callback ======
-    void dv_control_callback(const dv::interfaces::Control& msg);
-
+    void dv_control_callback(const dv_interfaces::Control::ConstPtr& msg);
 private:
     //// =======================================================================
     //  Logowanie równoległe (asynchroniczne)
@@ -160,6 +160,7 @@ private:
     ros::Publisher  pub_markers_cones_vis_;
     ros::Publisher  pub_pose_true_;
     ros::Publisher  pub_pose_ins_;
+    ros::Publisher  pub_log_full_;
     tf2_ros::TransformBroadcaster tf_br_;
 
     //// =======================================================================
@@ -197,8 +198,7 @@ private:
     int step_of_steer_input_application_  = 0;
     int step_number_pid_update_period_    = 0;
 
-    int step_number_to_apply_steer_input_  = 0;
-    int step_number_to_apply_torque_input_ = 0;
+    
 
     struct CameraTask {
         int   ready_step;
@@ -213,6 +213,8 @@ private:
     double random_noise_generator_() const;
     void publish_ins_(const INS_data& ins);
     void publish_cones_(const Track& cones, ros::Time timestamp);
+    void publish_cones_vision_markers_(const Track& det, const ros::Time& acquisition_stamp);
+    void publish_cones_gt_markers_();
     void compute_step_intervals_from_params_();
     void read_wheel_encoder_if_due_();
     void read_ins_if_due_();
@@ -221,6 +223,9 @@ private:
     void update_pid_if_due_();
     void apply_delayed_inputs_if_due_();
     double sample_vision_exec_time_() const;
+    void publish_bolid_tf_ins(const INS_data& ins);
+    void publish_bolid_tf_true();
+    void pub_full_state_();
 };
 
 } // namespace lem_dynamics_sim_

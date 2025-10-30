@@ -1,14 +1,13 @@
-cmake_minimum_required(VERSION 3.7)  
-
+cmake_minimum_required(VERSION 3.7)
 project(lem_simulator)
 
+# --- Ustawienia kompilatora ---
 add_compile_options(-std=c++17)
-
-set(CMAKE_CXX_STANDARD 17)  
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")  # optymalizacja
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")  # Dodanie optymalizacji
-
+# --- ROS pakiety ---
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
@@ -17,25 +16,27 @@ find_package(catkin REQUIRED COMPONENTS
   visualization_msgs
   tf
   dv_interfaces
-
 )
 
-
-## Find external libraries
+# --- Zewnętrzne biblioteki ---
 find_package(Eigen3 REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
+# --- catkin_package ---
 catkin_package(
   INCLUDE_DIRS include
   CATKIN_DEPENDS roscpp std_msgs geometry_msgs nav_msgs visualization_msgs tf dv_interfaces
 )
 
+# --- Include directories ---
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIR}  
+  ${EIGEN3_INCLUDE_DIR}
 )
-set( simSRC
+
+# --- Wspólne źródła pomocnicze ---
+set(simSRC
   src_helpers/cone_detector.cpp
   src_helpers/cone_track.cpp
   src_helpers/double_track.cpp
@@ -43,18 +44,39 @@ set( simSRC
   src_helpers/tire_model.cpp
   src_helpers/utiliities.cpp
 )
-add_executable(sim_loop_node  
-    main.cpp
-    sim_loop.cpp
-    ${simSRC}  
+
+# =====================================================================
+#                     WĘZEŁ GŁÓWNY: SIM LOOP NODE
+# =====================================================================
+add_executable(sim_loop_node
+  sim_loop.cpp
+  main.cpp
+  ${simSRC}
 )
 
 target_link_libraries(sim_loop_node
-    ${catkin_LIBRARIES}
-    nlohmann_json::nlohmann_json
-    Eigen3::Eigen
-    m
+  ${catkin_LIBRARIES}
+  nlohmann_json::nlohmann_json
+  Eigen3::Eigen
+  m
 )
 
+# =====================================================================
+#                  WĘZEŁ POMOCNICZY: FAKE CONTROL NODE
+# =====================================================================
+add_executable(false_dv_control_node
+  false_dv_control_node.cpp
+)
 
+target_link_libraries(false_dv_control_node
+  ${catkin_LIBRARIES}
+)
 
+# =====================================================================
+#                         INSTALACJA BINAREK
+# =====================================================================
+install(TARGETS
+  sim_loop_node
+  false_dv_control_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

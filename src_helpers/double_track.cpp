@@ -11,9 +11,11 @@ namespace lem_dynamics_sim_{
         double rolling_resistance = P.get("Cr") * ( P.get("m") * P.get("g") + areo_downforce ) ;
 
         double Fx_total = - x.fy_fl * sin(x.delta_left)   -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr - rolling_resistance - areo_drag;
-        double Fy_total = x.fy_fl * cos(x.delta_left)   + x.fy_fr * cos(x.delta_right) +  + x.fy_rl + x.fy_rr;
-        double Mz = -(- x.fy_fl * sin(x.delta_left))*P.get("t_front")/2  + (-  x.fy_fr * sin(x.delta_right))*P.get("t_front")/2 + x.fx_rr*P.get("t_rear")/2  - x.fx_rl*P.get("t_rear")/2 ;
-        Mz +=  (x.fy_fl * cos(x.delta_left)  * sin(x.delta_left) +  x.fy_fr * cos(x.delta_right) )*P.get("a") - (x.fy_rl + x.fy_rr)*P.get("b") ;
+        double Fy_total = x.fy_fl * cos(x.delta_left) + x.fy_fr * cos(x.delta_right) +  x.fy_rl + x.fy_rr;
+        double Mz = - P.get("t_front")/2 * (- x.fy_fl * sin(x.delta_left) )  + x.fy_fl * cos(x.delta_left) * P.get("a");
+        Mz += P.get("t_front")/2 * (- x.fy_fr* sin(x.delta_right) )  + x.fy_fr * cos(x.delta_right) * P.get("a");
+        Mz += -P.get("t_rear")/2 * x.fx_rl  - x.fy_rl * (P.get("b"));
+        Mz += P.get("t_rear")/2 * x.fx_rr + -  x.fy_rr * (P.get("b")); 
         State temp;
         temp.setZero();
 
@@ -50,18 +52,18 @@ namespace lem_dynamics_sim_{
 
 
         double m = P.get("m");
-        double g = P.get("gravity");
+        double g = P.get("g");
         double w = P.get("w");
         double a = P.get("a");
         double b = P.get("b");
         double t_front = P.get("t_front");
         double t_rear = P.get("t_rear");
         double h = P.get("h");
-        double h_roll_f =  P.get("h_roll_f");
-        double h_roll_r =  P.get("h_roll_r");
+        double h_roll_f =  P.get("h1_roll");
+        double h_roll_r =  P.get("h2_roll");
 
-        double Kf = P.get("Kf");
-        double Kr = P.get("Kr");
+        double Kf = P.get("K1");
+        double Kr = P.get("K2");
         double K_total =  Kf + Kr;
         double mf = m * a/w;
         double mr = m * b/w;
@@ -76,15 +78,15 @@ namespace lem_dynamics_sim_{
         double angle_construction_rear = P.get("angle_construction_rear");
 
         double vx_rr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_rear);
-        double vy_rr = x.vy - x.yaw_rate * r_front*std::cos(angle_construction_rear);
+        double vy_rr = x.vy - x.yaw_rate * r_rear*std::cos(angle_construction_rear);
     
-        double vx_rl = x.vy - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
-        double vy_rl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_rear);
+        double vx_rl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
+        double vy_rl = x.vy + x.yaw_rate * r_rear*std::cos(angle_construction_rear);
     
-        double vx_fr = x.vy + x.yaw_rate * r_rear*std::sin(angle_construction_front);
+        double vx_fr = x.vx + x.yaw_rate * r_front*std::sin(angle_construction_front);
         double vy_fr = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
     
-        double vx_fl = x.vy - x.yaw_rate * r_rear*std::sin(angle_construction_front);
+        double vx_fl = x.vx - x.yaw_rate * r_front*std::sin(angle_construction_front);
         double vy_fl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
     
         // usuwanie nieregularności przy małych prędkościach w rachunkach slipów - > niefizyczne tylko numeryczne : https://www.amazon.pl/Tire-Vehicle-Dynamics-Hans-Pacejka/dp/0080970168 strona z defincją Magic Fomrula

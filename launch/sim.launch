@@ -1,13 +1,18 @@
 <launch>
-  <node pkg="lem_simulator" type="sim_loop_node" name="lem_simulation_node" output="screen">
-
-      <!-- Pliki konfiguracyjne (domyślne, ale można łatwo zmienić) -->
-      <param name="param_file" value="$(find lem_simulator)/config/params_default.json"/>
-      <param name="track_file" value="$(find lem_simulator)/tracks/track_fsg.json"/>
-      <param name="log_file"   value="$(find lem_simulator)/logs/run_default.csv"/>
-
-      <!-- Włączanie logów -->
-      <param name="logging_enabled" value="false"/>
-
+  <!-- Pierwszy node: symulacja -->
+  <node pkg="lem_simulator"
+        type="sim_loop_node"
+        name="lem_simulation_node"
+        output="screen">
+    <param name="param_file" value="$(find lem_simulator)/config/params_default_lem.json"/>
+    <param name="track_file" value="$(find lem_simulator)/tracks/track_defualt.csv"/>
+    <param name="log_file"   value="$(find lem_simulator)/logs/run_default.csv"/>
+    <param name="logging_enabled" value="false"/>
   </node>
+
+  <!-- Drugi node: kontroler -->
+  <node pkg="lem_simulator"
+        type="false_dv_control_node"
+        name="dv_control_node"
+        output="screen"/>
 </launch>

@@ -13,15 +13,15 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
     //  zczytanie przydatnych parametrów dynamiki nadwozia 
 
     double m = P.get("m");
-    double g = P.get("gravity");
+    double g = P.get("g");
     double w = P.get("w");
     double a = P.get("a");
     double b = P.get("b");
     double t_front = P.get("t_front");
     double t_rear = P.get("t_rear");
     double h = P.get("h");
-    double h_roll_f =  P.get("h_roll_f");
-    double h_roll_r =  P.get("h_roll_r");
+    double h_roll_f =  P.get("h1_roll");
+    double h_roll_r =  P.get("h2_roll");
 
     // parametry opon MF 5.2 uproszczony
     
@@ -47,8 +47,8 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
 
     // sztywności zawieszenia
 
-    double Kf = P.get("Kf");
-    double Kr = P.get("Kr");
+    double Kf = P.get("K1");
+    double Kr = P.get("K2");
     double K_total =  Kf + Kr;
     double mf = m * a/w;
     double mr = m * b/w;
@@ -75,15 +75,15 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
 
 
     double vx_rr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_rear);
-    double vy_rr = x.vy - x.yaw_rate * r_front*std::cos(angle_construction_rear);
+    double vy_rr = x.vy - x.yaw_rate * r_rear*std::cos(angle_construction_rear);
 
     double vx_rl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
-    double vy_rl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_rear);
+    double vy_rl = x.vy + x.yaw_rate * r_rear*std::cos(angle_construction_rear);
 
-    double vx_fr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_front);
+    double vx_fr = x.vx + x.yaw_rate * r_front*std::sin(angle_construction_front);
     double vy_fr = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
 
-    double vx_fl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_front);
+    double vx_fl = x.vx - x.yaw_rate * r_front*std::sin(angle_construction_front);
     double vy_fl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
 
     // usuwanie nieregularności przy małych prędkościach w rachunkach slipów - > niefizyczne tylko numeryczne : https://www.amazon.pl/Tire-Vehicle-Dynamics-Hans-Pacejka/dp/0080970168 strona z defincją Magic Fomrula
@@ -107,13 +107,13 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
 
     double slip_angle_fr = x.delta_right - std::atan2(vy_fr,vx_fr_denom) ;
     double slip_angle_fl = x.delta_left  - std::atan2(vy_fl,vx_fl_denom) ;
-    double slip_angle_rr =  - std::atan2(vy_rr,vx_rl_denom);
+    double slip_angle_rr =  - std::atan2(vy_rr,vx_rr_denom);
     double slip_angle_rl =  - std::atan2(vy_rl,vx_rl_denom);
 
-    slip_angle_fr = std::clamp(slip_angle_fl,-M_PI/2 + 0.01,M_PI/2 - 0.01); // so dosen't go to infinity
-    slip_angle_fl = std::clamp(slip_angle_fr,-M_PI/2 + 0.01 , M_PI/2 - 0.01); // so dosen't go to infinity
-    slip_angle_rr = std::clamp(slip_angle_rl,-M_PI/2 + 0.01 , M_PI/2 - 0.01); // so dosen't go to infinity
-    slip_angle_rl = std::clamp(slip_angle_rr,-M_PI/2 + 0.01 , M_PI/2 - 0.01); // so dosen't go to infinity
+    slip_angle_fr = std::clamp(slip_angle_fl,-M_PI/2 + 0.3,M_PI/2 - 0.3); // so dosen't go to infinity
+    slip_angle_fl = std::clamp(slip_angle_fr,-M_PI/2 + 0.3 , M_PI/2 - 0.3); // so dosen't go to infinity
+    slip_angle_rr = std::clamp(slip_angle_rr,-M_PI/2 + 0.3 , M_PI/2 - 0.3); // so dosen't go to infinity
+    slip_angle_rl = std::clamp(slip_angle_rl,-M_PI/2 + 0.3 , M_PI/2 - 0.3); // so dosen't go to infinity
 
 
     double slip_ratio_fr = 0.0; // przednie koła są beznapędwoe
@@ -127,7 +127,7 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
     // clamping slips -> pytanie czy jak zrobie do -1,1 to nie usunę jakiś excessiv slipa? chuj wie
     // clamping slips -> pytanie czy jak zrobię -1,1 to nie usnunę jakiś excsessiv slip ? chuj wie
     slip_ratio_rr =  std::clamp(slip_ratio_rr,-0.99, 0.99); 
-    slip_ratio_fl =  std::clamp(slip_ratio_fl,-0.99, 0.99);
+    slip_ratio_rl =  std::clamp(slip_ratio_rl,-0.99, 0.99);
 
     // liczenie argumentów MF 5.2 uproszczonego statycznego - https://www.researchgate.net/publication/332637470_A_free-trajectory_quasi-steady-state_optimal-control_method_for_minimum_lap-time_of_race_vehicles
 
@@ -147,10 +147,10 @@ State derative_tire_model( const  ParamBank& P, const State& x, const Input& u){
     double slip_y_rr = std::tan(slip_angle_rr) / (1 + slip_ratio_rr ) ; 
     double slip_y_rl = std::tan(slip_angle_rl) / (1 + slip_ratio_rl ) ;
 
-    double slip_fl = std::sqrt(slip_x_fl*slip_x_fl + slip_y_fl*slip_y_fl ) + 1e-6 ; // to avoid division by zero chuj wie
-    double slip_fr = std::sqrt(slip_x_fr*slip_x_fr + slip_y_fr*slip_y_fr ) + 1e-6; // to avoid division by zero chuj wie
-    double slip_rr = std::sqrt(slip_x_rr*slip_x_rr + slip_y_rr*slip_y_rr)  + 1e-6; // to avoid division by zero chuj wie
-    double slip_rl = std::sqrt(slip_x_rl*slip_x_rl + slip_y_rl*slip_y_rl ) + 1e-6; // to avoid division by zero chuj wie
+    double slip_fl = std::hypot(slip_x_fl,slip_y_fl ) + 1e-6 ; // to avoid division by zero chuj wie
+    double slip_fr = std::hypot(slip_x_fr,slip_y_fr ) + 1e-6; // to avoid division by zero chuj wie
+    double slip_rr = std::hypot(slip_x_rr,slip_y_rr)  + 1e-6; // to avoid division by zero chuj wie
+    double slip_rl = std::hypot(slip_x_rl,slip_y_rl ) + 1e-6; // to avoid division by zero chuj wie
 
     // liczenie sił  w pacejka frame statycznego
 

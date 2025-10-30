@@ -14,13 +14,14 @@ int main(int argc, char** argv) {
     while (ros::ok()) {
         dv_interfaces::Control msg;
         msg.move_type =  static_cast<bool>(false);
-        msg.movement = static_cast<float> (10.0)  ; // 10 procent momentu
-        msg.steeringAngle_rad = amplitude * std::sin(2 * M_PI * frequency * ros::Time::now().toSec());
-        msg.service_brake =  static_cast<uint8_t>( false); 
+        msg.movement = static_cast<float> (1000.0)  ; // 10 procent momentu
+       // msg.steeringAngle_rad = amplitude * std::sin(2 * M_PI * frequency * ros::Time::now().toSec());
+       msg.steeringAngle_rad = static_cast<float> (0.0)  ;
+        msg.serviceBrake =  static_cast<uint8_t>( false); 
         msg.finished =   static_cast<bool>(false);
 
         control_pub.publish(msg);
-        ROS_INFO("Published fake control message");
+        //ROS_INFO("Published fake control message"); to bez
 
         rate.sleep();
     }

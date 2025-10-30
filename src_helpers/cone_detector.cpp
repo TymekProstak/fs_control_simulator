@@ -28,9 +28,9 @@ Track track_in_camera_frame(const State& state,
     const double sin_yaw = std::sin(state.yaw);
 
     // Prefetch offsetów kamery
-    const double x_cam = P.get("x_cog_to_camera");
-    const double y_cam = P.get("y_cog_to_camera");
-    const double z_cam = P.get("z_cog_to_camera");
+    const double x_cam = P.get("x_camera_to_cog");
+    const double y_cam = P.get("y_camera_to_cog");
+    const double z_cam = P.get("z_camera_to_cog");
 
     for (const auto& cone : track_global.cones)
     {
@@ -64,9 +64,9 @@ Track shoot_a_frame(const Track& global_track, const ParamBank& P, const State& 
     Track local = track_in_camera_frame(state, global_track, P);
 
     // --- 2. Prefetch parametrów
-    const double max_range    = P.get("max_vision_range");
-    const double fov_W        = P.get("fov_W");
-    const double fov_H        = P.get("fov_H");
+    const double max_range    = P.get("camera_range");
+    const double fov_W        = P.get("fov_x");
+    const double fov_H        = P.get("fov_y");
     const double tan_W2       = std::tan(0.5 * fov_W);
     const double tan_H2       = std::tan(0.5 * fov_H);
     const double camera_range = P.get("camera_range");
