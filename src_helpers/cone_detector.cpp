@@ -65,15 +65,15 @@ Track shoot_a_frame(const Track& global_track, const ParamBank& P, const State& 
 
     // --- 2. Prefetch parametrów
     const double max_range    = P.get("camera_range");
-    const double fov_W        = P.get("fov_x");
-    const double fov_H        = P.get("fov_y");
+    const double fov_W        = P.get("fov_x")*M_PI/180.0;
+    const double fov_H        = P.get("fov_y")*M_PI/180.0;
     const double tan_W2       = std::tan(0.5 * fov_W);
     const double tan_H2       = std::tan(0.5 * fov_H);
     const double camera_range = P.get("camera_range");
 
     // Parametry błędu
-    constexpr double a = 14.4;
-    constexpr double b = 0.144;
+    constexpr double a = 9.6712;
+    constexpr double b = 0.1645;
 
     // Parametry t-Studenta
     constexpr double df = 6.0;

@@ -10,12 +10,16 @@ namespace lem_dynamics_sim_{
         double areo_downforce = areo_downforce_front + areo_downforce_rear;
         double rolling_resistance = P.get("Cr") * ( P.get("m") * P.get("g") + areo_downforce ) ;
 
-        double Fx_total = - x.fy_fl * sin(x.delta_left)   -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr - rolling_resistance - areo_drag;
+        double Fx_total = - x.fy_fl * sin(x.delta_left)   -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr; //- rolling_resistance - areo_drag;
         double Fy_total = x.fy_fl * cos(x.delta_left) + x.fy_fr * cos(x.delta_right) +  x.fy_rl + x.fy_rr;
         double Mz = - P.get("t_front")/2 * (- x.fy_fl * sin(x.delta_left) )  + x.fy_fl * cos(x.delta_left) * P.get("a");
         Mz += P.get("t_front")/2 * (- x.fy_fr* sin(x.delta_right) )  + x.fy_fr * cos(x.delta_right) * P.get("a");
         Mz += -P.get("t_rear")/2 * x.fx_rl  - x.fy_rl * (P.get("b"));
         Mz += P.get("t_rear")/2 * x.fx_rr + -  x.fy_rr * (P.get("b")); 
+
+
+        
+        
         State temp;
         temp.setZero();
 
@@ -81,7 +85,7 @@ namespace lem_dynamics_sim_{
         double vy_rr = x.vy - x.yaw_rate * r_rear*std::cos(angle_construction_rear);
     
         double vx_rl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
-        double vy_rl = x.vy + x.yaw_rate * r_rear*std::cos(angle_construction_rear);
+        double vy_rl = x.vy - x.yaw_rate * r_rear*std::cos(angle_construction_rear);
     
         double vx_fr = x.vx + x.yaw_rate * r_front*std::sin(angle_construction_front);
         double vy_fr = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
@@ -173,15 +177,33 @@ namespace lem_dynamics_sim_{
         State dx = model_derative(P,x,u);
         x += dx * dt;
         unwrap_angle(x.yaw);
+
+        // limters for power and steer
+        x.torque_left = std::clamp(x.torque_left, std::min(P.get("min_torque")/2, P.get("P_min_recup")/(x.omega_rl)/2) , std::max( P.get("max_torque")/2, P.get("P_max_drive")/(x.omega_rl)/2));
+        x.torque_right = std::clamp(x.torque_right, std::min(P.get("min_torque")/2, P.get("P_min_recup")/(x.omega_rr )/2) , std::max( P.get("max_torque")/2, P.get("P_max_drive")/( x.omega_rr)/2));
+        x.torque = std::clamp(x.torque, std::min(P.get("min_torque"), P.get("P_min_recup")/(x.omega_rl + x.omega_rr)/2) , std::max( P.get("max_torque"), P.get("P_max_drive")/(x.omega_rl + x.omega_rr)/2));
+        
+        if(x.rack_angle >= P.get("max_steer")){
+            x.d_delta_left = std::min(0.0,x.d_delta_left);
+            x.d_delta_right = std::min(0.0,x.d_delta_right) ;
+            x.d_rack_angle = std::min(0.0,x.d_rack_angle);
+        }
+        if(x.rack_angle <= P.get("min_steer")){
+            x.d_delta_left = std::max(0.0,x.d_delta_left);
+            x.d_delta_right = std::max(0.0,x.d_delta_right) ;
+            x.d_rack_angle = std::max(0.0,x.d_rack_angle);
+        }
+
+        x.rack_angle = std::clamp(x.rack_angle , P.get("min_steer"), P.get("max_steer"));
     }
-    void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P){
-        double dt = P.get("simulation_time_step");
-        State k1 = model_derative(P,x,u);
-        State k2 = model_derative(P,x + 0.5 * dt * k1,u);
-        State k3 = model_derative(P,x + 0.5 * dt * k2,u);
-        State k4 = model_derative(P,x + dt * k3,u);
-        x += (dt/6) * (k1 + 2*k2 + 2*k3 + k4);
-        unwrap_angle(x.yaw);
-    }
+    // void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P){
+    //     double dt = P.get("simulation_time_step");
+    //     State k1 = model_derative(P,x,u);
+    //     State k2 = model_derative(P,x + 0.5 * dt * k1,u);
+    //     State k3 = model_derative(P,x + 0.5 * dt * k2,u);
+    //     State k4 = model_derative(P,x + dt * k3,u);
+    //     x += (dt/6) * (k1 + 2*k2 + 2*k3 + k4);
+    //     unwrap_angle(x.yaw);
+    // }
 
 }

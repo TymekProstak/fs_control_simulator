@@ -128,25 +128,26 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("pKy2",    JgetReqSafe(J,"tire.pKy2"));
   P.add("lambda_y",JgetReqSafe(J,"tire.lambda_y"));
   P.add("N0",      JgetReqSafe(J,"tire.N0"));
-  P.add("epsilon", JgetReqSafe(J,"tire.epsilon"));
-  P.add("relax_time_slip_angle_first_guees", JgetReqSafe(J,"tire.relax_length_slip_angle_piorek"));
-  P.add("relax_time_slip_ratio_first_guees", 0.3 * P.get("relax_time_slip_angle_first_guees"));
-  P.add("cy", JgetReqSafe(J,"tire.cy_first_guees"));
-  P.add("dy", P.get("cy") * P.get("relax_time_slip_angle_first_guees"));
-  P.add("cx", JgetReqSafe(J,"tire.cx_first_guees"));
-  P.add("dx", P.get("cx") * P.get("relax_time_slip_ratio_first_guees"));
+  P.add("epsilon", JgetReqSafe(J,"tire.epsilon")); // regularzycja slipów zgodnie z Tire and Vehicle Dynamics książka Hans B. Pacejka , 185 strona
+  P.add("relax_time_slip_angle_first_guees", JgetReqSafe(J,"tire.relax_length_slip_angle_piorek")); // inżynierka piórek rozdział o bocznej relaksacji
+  P.add("relax_time_slip_ratio_first_guees", 0.3 * P.get("relax_time_slip_angle_first_guees")); // / przybliżenie z dupy z wykresu stąd : https://www.researchgate.net/publication/3415307_Tire_Dynamic_Deflection_and_Its_Impact_on_Vehicle_Longitudinal_Dynamics_and_Control
+  P.add("cy", JgetReqSafe(J,"tire.cy_first_guees")); // // wartosc z dupy stąd https://research.tue.nl/en/studentTheses/analysis-and-development-of-formula-student-racing-tyres
+  P.add("dy", P.get("cy") * P.get("relax_time_slip_angle_first_guees")); // z dupy z długośći relaksacji i z teorii systemów 2 rzędu 
+  P.add("cx", JgetReqSafe(J,"tire.cx_first_guees")); // // wartosc z dupy stąd https://research.tue.nl/en/studentTheses/analysis-and-development-of-formula-student-racing-tyres
+  P.add("dx", P.get("cx") * P.get("relax_time_slip_ratio_first_guees")); // z dupy z długośći relaksacji i z teorii systemów 2 rzędu
 
   //// --- Drivetrain ---
   P.add("P_max_drive",        JgetReqSafe(J,"drivetrain.P_max_drive"));
   P.add("P_min_recup",        JgetReqSafe(J,"drivetrain.P_min_recup"));
-  P.add("drivetrain_timescale", JgetReqSafe(J,"drivetrain.drivetrain_timescale"));
-
+  P.add("drivetrain_timescale", JgetReqSafe(J,"drivetrain.drivetrain_timescale")); // z dupy fest
+  P.add("max_torque",       0.95* JgetReqSafe(J,"drivetrain.max_torque")); // przyjęto 95% sprawności przekładni( do zmierzenia)
+  P.add("min_torque", 0.95* JgetReqSafe(J,"drivetrain.min_torque")); // przyjęto 95% sprawności przekładni( do zmierzenia)
   //// --- Steering system ---
   P.add("natural_frequency_steering_system", JgetReqSafe(J,"steering_system.natural_frequency_steering_system"));
   P.add("steering_system_damping",           JgetReqSafe(J,"steering_system.steering_system_damping"));
-  P.add("delta_u",                           JgetReqSafe(J,"steering_system.delta_u"));
-  P.add("delta_d",                           JgetReqSafe(J,"steering_system.delta_d"));
-  P.add("delta_min_increement",              JgetReqSafe(J,"steering_system.delta_min_increement"));
+  P.add("max_steer" , JgetReqSafe(J, "steering_system.max_steer"));
+  P.add("min_steer", JgetReq(J, "steering_system.min_steer"));
+
 
   //// --- Simulation ---
   P.add("simulation_time_step", JgetReqSafe(J,"simulation.time_step"));

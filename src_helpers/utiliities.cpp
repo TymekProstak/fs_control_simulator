@@ -4,7 +4,7 @@ namespace lem_dynamics_sim_ {
 
 State::State() : x(0), y(0), yaw(0), vx(0), vy(0), yaw_rate(0),
                  omega_rr(0), omega_rl(0),
-                 delta_left(0), d_delta_left(0), delta_right(0), d_delta_right(0),
+                 delta_left(0), delta_right(0), 
                  rack_angle(0), d_rack_angle(0),
                  torque(0), torque_left(0), torque_right(0),
                  fx_rr(0), fx_rl(0), fy_rr(0), fy_rl(0), fy_fr(0), fy_fl(0),
@@ -13,7 +13,7 @@ State::State() : x(0), y(0), yaw(0), vx(0), vy(0), yaw_rate(0),
 State::State(double value) : 
               x(value), y(value), yaw(value), vx(value), vy(value), yaw_rate(value),
               omega_rr(value), omega_rl(value),
-              delta_left(value), d_delta_left(value), delta_right(value), d_delta_right(value),
+              delta_left(value),delta_right(value),
               rack_angle(value), d_rack_angle(value),
               torque(value), torque_left(value), torque_right(value),
               fx_rr(value), fx_rl(value), fy_rr(value), fy_rl(value), fy_fr(value), fy_fl(value),
@@ -32,28 +32,26 @@ State::State(const std::vector<double>& values) {
     omega_rr = values[6];
     omega_rl = values[7];
     delta_left = values[8];
-    d_delta_left = values[9];
-    delta_right = values[10];
-    d_delta_right = values[11];
-    rack_angle = values[12];
-    d_rack_angle = values[13];
-    torque = values[14];
-    torque_left = values[15];
-    torque_right = values[16];
-    fx_rr = values[17];
-    fx_rl = values[18];
-    fy_rr = values[19];
-    fy_rl = values[20];
-    fy_fr = values[21];
-    fy_fl = values[22];
-    prev_ax = values[23];
-    prev_ay = values[24];
+    delta_right = values[9];
+    rack_angle = values[10];
+    d_rack_angle = values[11];
+    torque = values[12];
+    torque_left = values[13];
+    torque_right = values[14];
+    fx_rr = values[15];
+    fx_rl = values[16];
+    fy_rr = values[17];
+    fy_rl = values[18];
+    fy_fr = values[19];
+    fy_fl = values[20];
+    prev_ax = values[21];
+    prev_ay = values[22];
 }
 
 void State::setZero() {
     x = y = yaw = vx = vy = yaw_rate = 0.0;
     omega_rr = omega_rl = 0.0;
-    delta_left = d_delta_left = delta_right = d_delta_right = 0.0;
+    delta_left =  delta_right = 0.0;
     rack_angle = d_rack_angle = 0.0;
     torque = torque_left = torque_right = 0.0;
     fx_rr = fx_rl = fy_rr = fy_rl = fy_fr = fy_fl = 0.0;
@@ -71,9 +69,7 @@ State State::operator+(const State& other) const {
     result.omega_rr = omega_rr + other.omega_rr;
     result.omega_rl = omega_rl + other.omega_rl;
     result.delta_left = delta_left + other.delta_left;
-    result.d_delta_left = d_delta_left + other.d_delta_left;
     result.delta_right = delta_right + other.delta_right;
-    result.d_delta_right = d_delta_right + other.d_delta_right;
     result.rack_angle = rack_angle + other.rack_angle;
     result.d_rack_angle = d_rack_angle + other.d_rack_angle;
     result.torque = torque + other.torque;
@@ -100,9 +96,7 @@ State& State::operator+=(const State& other) {
     omega_rr += other.omega_rr;
     omega_rl += other.omega_rl;
     delta_left += other.delta_left;
-    d_delta_left += other.d_delta_left;
     delta_right += other.delta_right;
-    d_delta_right += other.d_delta_right;
     rack_angle += other.rack_angle;
     d_rack_angle += other.d_rack_angle;
     torque += other.torque;
@@ -129,10 +123,8 @@ State State::operator*(double scalar) const {
     result.yaw_rate = yaw_rate * scalar;
     result.omega_rr = omega_rr * scalar;
     result.omega_rl = omega_rl * scalar;
-    result.delta_left = delta_left * scalar;
-    result.d_delta_left = d_delta_left * scalar;
     result.delta_right = delta_right * scalar;
-    result.d_delta_right = d_delta_right * scalar;
+    result.delta_left = delta_left * scalar;
     result.rack_angle = rack_angle * scalar;
     result.d_rack_angle = d_rack_angle * scalar;
     result.torque = torque * scalar;
