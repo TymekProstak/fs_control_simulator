@@ -1,0 +1,24 @@
+<launch>
+  <!-- Pierwszy node: symulacja -->
+  <node pkg="lem_simulator"
+        type="sim_loop_node"
+        name="lem_simulation_node"
+        output="screen">
+    <param name="param_file" value="$(find lem_simulator)/config/params_default_lem.json"/>
+    <param name="cones_file" value="$(find lem_simulator)/tracks/cones1.csv"/>
+    <param name="track_file" value="$(find lem_simulator)/tracks/track1.csv"/>
+    <param name="log_file"   value="$(find lem_simulator)/logs/run_default.csv"/>
+    <param name="logging_enabled" value="false"/>
+  </node>
+
+  <!-- Fake path planning: read CSV and publish dv_interfaces/Path on /path_planning/path -->
+  <node pkg="lem_simulator"
+        type="false_dv_path_planning_node"
+        name="false_dv_path_planning_node"
+        output="screen">
+    <param name="track_file" value="$(find lem_simulator)/tracks/track1.csv"/>
+    <param name="frame_id" value="map"/>
+    <param name="publish_rate" value="1.0"/>
+  </node>
+
+</launch>

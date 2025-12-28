@@ -1,0 +1,305 @@
+#pragma once
+
+#include "double_track.hpp"
+#include "cone_detector.hpp"
+#include "cone_track.hpp"
+
+#include <ros/ros.h>
+#include <ros/package.h>
+
+#include <std_msgs/String.h>
+#include <nav_msgs/Odometry.h>
+
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+
+#include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <geometry_msgs/PoseStamped.h>
+
+#include "dv_interfaces/Control.h"
+#include "dv_interfaces/Cone.h"
+#include "dv_interfaces/Cones.h"
+#include "dv_interfaces/full_state.h"
+
+#include <string>
+#include <deque>
+#include <optional>
+#include <fstream>
+#include <sstream>
+#include <mutex>
+#include <thread>
+#include <queue>
+#include <atomic>
+#include <condition_variable>
+#include <algorithm>
+#include <cmath>
+#include <random>
+
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <tf2_ros/transform_broadcaster.h>
+
+//// ===========================================================================
+///  Symulator LEM Dynamics + ROS
+///  - obsługa wejść sterujących
+///  - kroki symulacji i publikacje danych
+///  - modelowanie opóźnień czujników (kamera / INS / enkoder)
+///  - asynchroniczny logger (nie blokuje pętli fizyki)
+//// ===========================================================================
+
+namespace lem_dynamics_sim_ {
+
+    
+
+//// ===========================================================================
+//  Helpery do kolorowania markerów stożków
+static std_msgs::ColorRGBA color_from_class_gt(const std::string& cls, float alpha = 0.95f)
+{
+    std_msgs::ColorRGBA c; 
+    c.a = alpha;
+
+    if (cls == "yellow" || cls == "Y") {
+        c.r = 1.0f; c.g = 0.9f; c.b = 0.0f;
+    }
+    else if (cls == "blue" || cls == "B") {
+        c.r = 0.1f; c.g = 0.3f; c.b = 1.0f;
+    }
+    else if (cls == "orange" || cls == "O") {
+        c.r = 1.0f; c.g = 0.4f; c.b = 0.0f;
+    }
+    else {
+        c.r = 0.6f; c.g = 0.6f; c.b = 0.6f;
+    }
+   
+    return c;
+}
+
+static std_msgs::ColorRGBA color_from_class_vision(const std::string& cls, float alpha = 0.95f)
+{
+    std_msgs::ColorRGBA c;
+    c.a = alpha;
+
+    if (cls == "yellow")      { c.r = 1.0f; c.g = 1.0f; c.b = 0.0f; }      // czysty żółty
+    else if (cls == "blue")   { c.r = 0.0f; c.g = 0.3f; c.b = 1.0f; }      // nasycony niebieski
+    else if (cls == "orange") { c.r = 1.0f; c.g = 0.55f; c.b = 0.0f; }     // żywy pomarańcz
+    else                      { c.r = 0.7f; c.g = 0.7f; c.b = 0.7f; }      // neutralny szary
+
+    return c;
+}
+
+
+//// ===========================================================================
+
+static visualization_msgs::Marker make_cone_marker(
+    int id, const std::string& frame,
+    double x, double y, double z,
+    const std_msgs::ColorRGBA& col,
+    const ros::Duration& lifetime)
+{
+    visualization_msgs::Marker m;
+    m.header.frame_id = frame;
+    m.header.stamp    = ros::Time::now();
+    m.ns   = "cones";
+    m.id   = id;
+    m.type = visualization_msgs::Marker::CYLINDER; // stożek jako cylinder
+    m.action = visualization_msgs::Marker::ADD;
+
+    // --- pozycja i orientacja ---
+    m.pose.position.x = x;
+    m.pose.position.y = y;
+    m.pose.position.z = z + 0.18;  // podniesienie o połowę wysokości
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+
+    // --- rozmiar stożka ---
+    m.scale.x = 0.28;
+    m.scale.y = 0.28;
+    m.scale.z = 0.36;
+
+    // --- kolor i czas życia ---
+    m.color = col;
+    m.lifetime = lifetime;
+    m.frame_locked = false; // nie przypinaj do TF – Foxglove sam zaktualizuje
+
+    return m;
+}
+
+//// ===========================================================================
+//  Struktury pomocnicze
+//// ===========================================================================
+struct INS_data {
+    double x{};
+    double y{};
+    double yaw{};
+    double vx{};
+    double vy{};
+    double yaw_rate{};
+};
+
+struct DV_control_input {
+    // Used when torque_mode==0 (TORQUE_PERCENTAGE): per-wheel torque request in [%] of max_torque
+    double torque_fl{};
+    double torque_fr{};
+    double torque_rl{};
+    double torque_rr{};
+
+    // Used when torque_mode==1 (ms): target speed request (km/h) (legacy movement field)
+    double speed_request_ms{};
+
+    double steer{};
+    int torque_mode{}; // 0 - torque , 1 - speed
+};
+
+//// ===========================================================================
+//  Klasa główna symulatora ROS
+//// ===========================================================================
+class Simulation_lem_ros_node {
+
+// ===== tick phases (0..period-1) =====
+int phase_camera_shoot_          = 0;
+int phase_wheel_encoder_reading_ = 0;
+int phase_ins_reading_           = 0;
+int phase_torque_apply_          = 0;
+int phase_steer_apply_           = 0;
+int phase_pid_update_            = 0;
+
+// RNG do losowania faz (stałe na start symulacji)
+std::mt19937 phase_rng_{std::random_device{}()};
+
+// helper do losowania fazy
+int pick_phase_(int period);
+
+
+public:
+    Simulation_lem_ros_node(ros::NodeHandle& nh,
+                            const std::string& param_file,
+                            const std::string& track_file,
+                            const std::string& log_file);
+
+    ~Simulation_lem_ros_node();
+
+    // ====== Główna pętla ======
+    void step();
+
+    // ====== Dostęp do stanu ======
+    State get_state() const;
+    ParamBank get_parameters() const;
+    int get_step_number() const;
+
+    // ====== ROS callback ======
+    void dv_control_callback(const dv_interfaces::Control::ConstPtr& msg);
+private:
+    //// =======================================================================
+    //  Logowanie równoległe (asynchroniczne)
+    //// =======================================================================
+    std::ofstream log_file_;
+    bool logging_enabled_ = false;
+    // kolejka i wątek loggera
+    std::queue<std::string> log_queue_;
+    std::mutex log_mutex_;
+    std::condition_variable log_cv_;
+    std::thread log_thread_;
+    std::atomic<bool> logging_thread_running_{false};
+
+    void start_logging_thread_();
+    void stop_logging_thread_();
+    void log_state_(); // wrzuca do kolejki
+
+    //// =======================================================================
+    //  ROS
+    //// =======================================================================
+    ros::Subscriber sub_control_;
+    ros::Publisher  pub_ins_;
+    ros::Publisher  pub_cones_;
+    ros::Publisher  pub_markers_cones_gt_;
+    ros::Publisher  pub_markers_cones_vis_;
+    ros::Publisher  pub_pose_true_;
+    ros::Publisher  pub_pose_ins_;
+    ros::Publisher  pub_log_full_;
+    ros::Publisher  pub_marker_bolid_;
+    tf2_ros::TransformBroadcaster tf_br_;
+
+    //// =======================================================================
+    //  Parametry, stany i sterowanie
+    //// =======================================================================
+    ParamBank P_;
+    State     state_;
+    Track     track_global_;
+
+    double pid_prev_I_          = 0.0;
+    double pid_prev_error_      = 0.0;
+    double target_wheel_speed_  = 0.0;
+    double pid_speed_out_       = 0.0;
+    double pid_omega_actual_    = 0.0;
+
+  
+    // request to a motor inverter per wheel
+    double torque_command_to_invert_fl_ = 0.0;
+    double torque_command_to_invert_fr_ = 0.0;
+    double torque_command_to_invert_rl_ = 0.0;
+    double torque_command_to_invert_rr_ = 0.0;
+
+    // last  torque commands recived by dv board
+    double torque_command_recived_by_dv_board_fl_ = 0.0;
+    double torque_command_recived_by_dv_board_fr_ = 0.0;
+    double torque_command_recived_by_dv_board_rl_ = 0.0;
+    double torque_command_recived_by_dv_board_rr_ = 0.0;
+
+    double steer_command_       = 0.0;
+    double target_wheel_speed_request = 0.0;
+
+    int torque_mode_ = 0; // 0 - torque, 1 - speed
+    DV_control_input last_input_requested_{};
+
+    //// =======================================================================
+    //  INS, kolejki kamer, dane
+    //// =======================================================================
+    Track    track_to_be_published_;
+    INS_data ins_data_to_be_published_;
+    INS_data last_ins_data_already_published_;
+
+    int step_number_ = 0;
+
+    int step_of_camera_shoot_          = 0;
+    int step_of_wheel_encoder_reading_ = 0;
+    int step_of_ins_reading_           = 0;
+    int step_of_torque_input_application_ = 0;
+    int step_of_steer_input_application_  = 0;
+    int step_number_pid_update_period_    = 0;
+    int last_frame_size_ = 0;
+
+    
+
+    struct CameraTask {
+        int   ready_step;
+        Track frame;
+    };
+    std::deque<CameraTask> camera_queue_;
+    std::deque<ros::Time>  timestamp_queue_;
+
+    //// =======================================================================
+    //  Pomocnicze funkcje symulacyjne
+    //// =======================================================================
+    double random_noise_generator_() const;
+    void publish_ins_(const INS_data& ins);
+    void publish_cones_(const Track& cones, ros::Time timestamp);
+    void publish_cones_vision_markers_(const Track& det, const ros::Time& acquisition_stamp);
+    void publish_cones_gt_markers_();
+    void compute_step_intervals_from_params_();
+    void read_wheel_encoder_if_due_();
+    void read_ins_if_due_();
+    void shoot_camera_or_enqueue_if_due_();
+    void publish_ready_camera_frames_from_queue_();
+    void update_pid_if_due_();
+    void apply_delayed_inputs_if_due_();
+    double sample_vision_exec_time_() const;
+    void publish_bolid_tf_ins(const INS_data& ins);
+    void publish_bolid_tf_true();
+    void pub_full_state_();
+    void publish_bolid_marker_();
+};
+
+} // namespace lem_dynamics_sim_

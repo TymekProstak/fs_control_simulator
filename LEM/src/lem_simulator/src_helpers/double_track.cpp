@@ -1,0 +1,264 @@
+#include "double_track.hpp"
+
+namespace lem_dynamics_sim_{
+
+    State model_derative(const ParamBank& P, const  State& x, const Input& u) {
+
+
+
+
+        double areo_drag = P.get("Cd") * x.vx * x.vx;
+        double areo_downforce_front = P.get("Cl1") * x.vx * x.vx;
+        double areo_downforce_rear  = P.get("Cl2") * x.vx * x.vx;
+        double areo_downforce = areo_downforce_front + areo_downforce_rear;
+        double rolling_resistance = P.get("Cr") * ( P.get("m") * P.get("g") + areo_downforce ) ;
+
+        double Fx_total = - x.fy_fl * sin(x.delta_left)   -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr -  (areo_drag  + rolling_resistance)* ((x.vx == 0.0) ? 0 : static_cast<int>(std::copysign(1.0, x.vx)));
+        double Fy_total = x.fy_fl * cos(x.delta_left) + x.fy_fr * cos(x.delta_right) +  x.fy_rl + x.fy_rr;
+        double Mz = - P.get("t_front")/2 * (- x.fy_fl * sin(x.delta_left) )  + x.fy_fl * cos(x.delta_left) * P.get("a");
+        Mz += P.get("t_front")/2 * (- x.fy_fr* sin(x.delta_right) )  + x.fy_fr * cos(x.delta_right) * P.get("a");
+        Mz += -P.get("t_rear")/2 * x.fx_rl  - x.fy_rl * (P.get("b"));
+        Mz += P.get("t_rear")/2 * x.fx_rr + -  x.fy_rr * (P.get("b")); 
+
+
+        
+        
+        State temp;
+        temp.setZero();
+
+        // kinematics + dynamics of CoG and vehicle body
+        temp.x = x.vx * cos(x.yaw) - x.vy * sin(x.yaw);
+        temp.y = x.vy * cos(x.yaw) + x.vx * sin(x.yaw);
+        temp.yaw = x.yaw_rate;
+        temp.vx = Fx_total / P.get("m") + x.vy * x.yaw_rate;
+        temp.vy = Fy_total / P.get("m") - x.vx * x.yaw_rate;
+        temp.yaw_rate = Mz / P.get("Iz");
+
+
+        // settin prev_ax and prev_ay for mass transfer model
+        temp.prev_ax = (Fx_total / P.get("m") - x.prev_ax)/P.get("simulation_time_step") ;
+        temp.prev_ay = ( Fy_total / P.get("m") - x.prev_ay)/P.get("simulation_time_step") ;
+
+
+
+        temp += derative_steering(P,x,u);
+        temp += derative_drivetrain(P,x,u);
+        temp += derative_tire_model(P,x,u);
+        temp += derative_wheels_dynamics_model(P,x,u);
+        return temp;
+
+    }
+
+   
+    // fukncja do liczenia loga przydatnych rzeczy z informacji o stanie pojazdu w danym kroku symulacji
+
+
+    Log_Info_full log_info_full(const State& x, const Input& u, const ParamBank& P , int step_number){
+
+        Log_Info_full info;
+
+
+        double m = P.get("m");
+        double g = P.get("g");
+        double w = P.get("w");
+        double a = P.get("a");
+        double b = P.get("b");
+        double t_front = P.get("t_front");
+        double t_rear = P.get("t_rear");
+        double h = P.get("h");
+        double h_roll_f =  P.get("h1_roll");
+        double h_roll_r =  P.get("h2_roll");
+
+        double Kf = P.get("K1");
+        double Kr = P.get("K2");
+        double K_total =  Kf + Kr;
+        double mf = m * a/w;
+        double mr = m * b/w;
+        double h_prim_f = h - h_roll_f;
+        double h_prim_r = h - h_roll_r;
+        double epsilon = P.get("epsilon");
+
+
+        double r_rear = P.get("r_rear");
+        double r_front = P.get("r_front");
+        double angle_construction_front = P.get("angle_construction_front");
+        double angle_construction_rear = P.get("angle_construction_rear");
+
+        double vx_rr = x.vx + x.yaw_rate * r_rear*std::sin(angle_construction_rear);
+        double vy_rr = x.vy - x.yaw_rate * r_rear*std::cos(angle_construction_rear);
+    
+        double vx_rl = x.vx - x.yaw_rate * r_rear*std::sin(angle_construction_rear);
+        double vy_rl = x.vy - x.yaw_rate * r_rear*std::cos(angle_construction_rear);
+    
+        double vx_fr = x.vx + x.yaw_rate * r_front*std::sin(angle_construction_front);
+        double vy_fr = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
+    
+        double vx_fl = x.vx - x.yaw_rate * r_front*std::sin(angle_construction_front);
+        double vy_fl = x.vy + x.yaw_rate * r_front*std::cos(angle_construction_front);
+    
+        // usuwanie nieregularności przy małych prędkościach w rachunkach slipów - > niefizyczne tylko numeryczne : https://www.amazon.pl/Tire-Vehicle-Dynamics-Hans-Pacejka/dp/0080970168 strona z defincją Magic Fomrula
+     
+       // dodanie symetrczyności wbrew defjincji slipu z MF 5.2 by usunać niefizyczne zachowania przy bardzo małych prędkościach/ odwracaniu momentu obrotowego
+       double vx_rr_denom = std::max( std::max(std::abs(vx_rr) , std::abs(x.omega_rr *  P.get("R"))) ,std::abs( epsilon) ) ;
+       double vx_rl_denom = std::max( std::max(std::abs(vx_rl) , std::abs(x.omega_rl *  P.get("R"))) ,std::abs( epsilon) ) ;
+        double vx_fr_denom = std::max(std::abs(vx_fr) , epsilon) ;
+        double vx_fl_denom = std::max(std::abs(vx_fl)  , epsilon) ;
+
+        double slip_angle_fr = x.delta_right - std::atan2(vy_fr,vx_fr_denom) ;
+        double slip_angle_fl = x.delta_left  - std::atan2(vy_fl,vx_fl_denom) ;
+        double slip_angle_rr =  - std::atan2(vy_rr,vx_rr_denom);
+        double slip_angle_rl =  - std::atan2(vy_rl,vx_rl_denom);
+
+        double slip_ratio_rr = (x.omega_rr * P.get("R") - vx_rr )/vx_rr_denom;
+        double slip_ratio_rl = (x.omega_rl * P.get("R") - vx_rl) / vx_rl_denom;
+    
+
+        info.kappa_fl = 0.0 ; // przednie koła są beznapędowe
+        info.kappa_fr = 0.0; // przednie koła są beznapędowe
+        info.kappa_rl = slip_ratio_rl;
+        info.kappa_rr = slip_ratio_rr;
+
+        info.slip_angle_fl = slip_angle_fl * 180 / M_PI ;
+        info.slip_angle_fr = slip_angle_fr * 180 / M_PI ;
+        info.slip_angle_rl =  slip_angle_rl * 180 / M_PI ;
+        info.slip_angle_rr = slip_angle_rr * 180 / M_PI ;
+     
+
+        info.slip_angle_body = std::atan2(x.vy, x.vx) * 180 / M_PI ;
+
+        info.fz_fl = 0.5 * mf * g - 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl1") * x.vx * x.vx ;
+        info.fz_fr =   0.5 * mf * g  - 0.5 * m * x.prev_ax * h/w  + x.prev_ay /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl1") * x.vx * x.vx ;
+        info.fz_rl =   0.5 * mr * g  + 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl2") * x.vx * x.vx ;
+        info.fz_rr =  0.5 * mr *g   + 0.5 * m * x.prev_ax * h/w  + x.prev_ay/t_rear * ( mr * h_roll_r + Kr/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl2") * x.vx * x.vx ;
+
+        info.fy_fl = x.fy_fl;
+        info.fy_fr = x.fy_fr;
+        info.fy_rl = x.fy_rl;
+        info.fy_rr = x.fy_rr;
+
+        info.fx_fl =  0.0; // przednie koła są beznapędowe
+        info.fx_fr = 0.0; // przednie koła są beznapędowe
+        info.fx_rl = x.fx_rl;
+        info.fx_rr = x.fx_rr;
+
+        info.Power_total = (x.torque) * (x.omega_rr + x.omega_rl)/2 / 1000 ; // kW
+
+       
+
+        info.torque = x.torque;
+        info.torque_left = x.torque_left;
+        info.torque_right = x.torque_right;
+
+        info.omega_rl = x.omega_rl;
+        info.omega_rr = x.omega_rr;
+
+        info.delta_left = x.delta_left * 180 / M_PI;
+        info.delta_rigth = x.delta_right * 180 / M_PI;
+        info.rack_angle = x.rack_angle * 180 / M_PI;
+
+        info.ax = x.prev_ax/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
+        info.ay = x. prev_ay/9.81; // because in g units i opozninoe o o jeden krok ale to nie szkoda
+
+        info.yaw_rate = x.yaw_rate;
+        info.vx = x.vx;
+        info.vy = x.vy;
+
+        info.time = step_number * P.get("simulation_time_step");
+
+        info.rack_angle_request = u.rack_angle_request * 180 / M_PI;
+        info.torque_request = u.torque_request;
+        info.x = x.x;
+        info.y = x.y;
+        info.yaw = x.yaw;
+        info.total_drag = P.get("Cd") * x.vx * x.vx + P.get("Cr") * ( P.get("m") * P.get("g") + P.get("Cl1") * x.vx * x.vx + P.get("Cl2") * x.vx * x.vx ) ;
+        info.total_downforce = P.get("Cl1") * x.vx * x.vx + P.get("Cl2") * x.vx * x.vx;
+
+        return info;
+}
+
+    void euler_sim_timestep(State& x, const Input& u, const ParamBank& P){
+        double dt = P.get("simulation_time_step");
+        State dx = model_derative(P,x,u);
+        x += dx * dt;
+        unwrap_angle(x.yaw);
+
+
+        // === limits for power and steer (rear wheels) ===
+
+        // stałe z parametrów
+        const double T_min   = P.get("min_torque");    // np. -200
+        const double T_max   = P.get("max_torque");    // np.  200
+        const double P_rec   = P.get("P_min_recup");   // W, wartość ujemna / albo dodatnia jako "abs" – zależnie jak masz
+        const double P_drv   = P.get("P_max_drive");   // W
+
+        // bezpieczne prędkości kół (żeby nie dzielić przez 0)
+        const double omega_eps = 15.0;   // rad/s ~ 3 m/s dla R≈0.195..0.2 – dobierz pod siebie
+
+        double omega_rl_safe = std::copysign(std::max(std::abs(x.omega_rl), omega_eps), x.omega_rl);
+        double omega_rr_safe = std::copysign(std::max(std::abs(x.omega_rr), omega_eps), x.omega_rr);
+        double omega_sum     = std::abs(x.omega_rl) + std::abs(x.omega_rr);
+        double omega_sum_safe = std::max(omega_sum, 2.0*omega_eps);   // obie prawie stoją → użyj 2*eps
+
+        // ---- LEFT WHEEL ----
+        // limit momentowy (twardy)
+        double T_left_min_mom = T_min * 0.5;
+        double T_left_max_mom = T_max * 0.5;
+
+        // limit mocowy
+        double T_left_min_pow = - std::abs(P_rec) / omega_rl_safe / 2.0;  // rekuperacja (ujemny)
+        double T_left_max_pow =   std::abs(P_drv) / omega_rl_safe / 2.0;  // napęd (dodatni)
+
+        // finalne limity = "bardziej restrykcyjne"
+        double T_left_min = std::min(T_left_min_mom, T_left_min_pow);
+        double T_left_max = std::max(T_left_max_mom, T_left_max_pow);
+
+        x.torque_left = std::clamp(x.torque_left, T_left_min, T_left_max);
+
+        // ---- RIGHT WHEEL ----
+        double T_right_min_mom = T_min * 0.5;
+        double T_right_max_mom = T_max * 0.5;
+
+        double T_right_min_pow = - std::abs(P_rec) / omega_rr_safe / 2.0;
+        double T_right_max_pow =   std::abs(P_drv) / omega_rr_safe / 2.0;
+
+        double T_right_min = std::min(T_right_min_mom, T_right_min_pow);
+        double T_right_max = std::max(T_right_max_mom, T_right_max_pow);
+
+        x.torque_right = std::clamp(x.torque_right, T_right_min, T_right_max);
+
+        // ---- TOTAL TORQUE (jeśli używasz x.torque jako "sumy") ----
+        double T_tot_min_mom = T_min;
+        double T_tot_max_mom = T_max;
+
+        double T_tot_min_pow = - std::abs(P_rec) / omega_sum_safe;  // cała oś
+        double T_tot_max_pow =   std::abs(P_drv) / omega_sum_safe;
+
+        double T_tot_min = std::min(T_tot_min_mom, T_tot_min_pow);
+        double T_tot_max = std::max(T_tot_max_mom, T_tot_max_pow);
+
+        x.torque = std::clamp(x.torque, T_tot_min, T_tot_max);
+
+        if(x.rack_angle >= P.get("max_steer")){
+            x.d_delta_left = std::min(0.0,x.d_delta_left);
+            x.d_delta_right = std::min(0.0,x.d_delta_right) ;
+            x.d_rack_angle = std::min(0.0,x.d_rack_angle);
+        }
+        if(x.rack_angle <= P.get("min_steer")){
+            x.d_delta_left = std::max(0.0,x.d_delta_left);
+            x.d_delta_right = std::max(0.0,x.d_delta_right) ;
+            x.d_rack_angle = std::max(0.0,x.d_rack_angle);
+        }
+
+        x.rack_angle = std::clamp(x.rack_angle , P.get("min_steer"), P.get("max_steer"));
+    }
+    // void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P){
+    //     double dt = P.get("simulation_time_step");
+    //     State k1 = model_derative(P,x,u);
+    //     State k2 = model_derative(P,x + 0.5 * dt * k1,u);
+    //     State k3 = model_derative(P,x + 0.5 * dt * k2,u);
+    //     State k4 = model_derative(P,x + dt * k3,u);
+    //     x += (dt/6) * (k1 + 2*k2 + 2*k3 + k4);
+    //     unwrap_angle(x.yaw);
+    // }
+
+}
