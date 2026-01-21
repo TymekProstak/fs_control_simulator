@@ -3,3 +3,8 @@ float32 ey_avg
 float32 epsi_current
 float32 ey_current
 float32 v_ref
+float32 alat_ref
+float32 kappa_ref
+float32 R_ref
+float32 v_s_current
+float32 v_s_avg

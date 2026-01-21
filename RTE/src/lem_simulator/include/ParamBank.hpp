@@ -165,6 +165,7 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("pid_max",                              JgetReqSafe(J,"dv_board.pid_max"));
   P.add("pid_min",                              JgetReqSafe(J,"dv_board.pid_min"));
   P.add("pid_scale",                              JgetReqSafe(J,"dv_board.pid_scale"));
+
   
 
   //// --- Pose / INS ---
@@ -172,6 +173,8 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("orientation_noise", JgetReqSafe(J,"pose.orientation_noise"));
   P.add("rotation_noise",    JgetReqSafe(J,"pose.rotation_noise"));
   P.add("ins_frequancy",     JgetReqSafe(J,"pose.ins_frequancy"));
+  P.add("gps_speed_frequancy", JgetReqSafe(J,"pose.gps_speed_frequancy"));
+  P.add("speed_gps_noise",   JgetReqSafe(J,"pose.speed_gps_noise"));
 
   //// --- Vision ---
   P.add("fov_x",                       JgetReqSafe(J,"vision.fov_x"));

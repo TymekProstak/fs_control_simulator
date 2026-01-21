@@ -43,6 +43,7 @@ set(simSRC
   src_helpers/steering_system.cpp
   src_helpers/tire_model.cpp
   src_helpers/utiliities.cpp
+  src_helpers/kalman.cpp
 )
 
 # =====================================================================

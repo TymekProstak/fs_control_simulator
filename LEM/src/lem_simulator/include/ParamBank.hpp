@@ -9,15 +9,10 @@
 
 namespace lem_dynamics_sim_ {
 
-
-
-//// ============================================================
-////  Struktura głównego banku parametrów
-//// ============================================================
 struct ParamBank {
-  std::vector<std::string> names;                 // nazwy w kolejności
-  std::unordered_map<std::string,int> idx;        // nazwa -> index
-  std::vector<double> values;                     // wartości liczbowe
+  std::vector<std::string> names;
+  std::unordered_map<std::string,int> idx;
+  std::vector<double> values;
 
   int add(const std::string& name, double val){
     auto it = idx.find(name);
@@ -43,10 +38,6 @@ struct ParamBank {
   size_t size() const { return values.size(); }
 };
 
-//// ============================================================
-////  Pomocnicze funkcje do pobierania z JSON-a
-//// ============================================================
-
 // --- Wymagane pole ---
 inline double JgetReq(const nlohmann::json& J, const std::string& path){
   auto pos = path.find('.');
@@ -62,29 +53,29 @@ inline double JgetReq(const nlohmann::json& J, const std::string& path){
   return JgetReq(J.at(head), tail);
 }
 
-// --- Bezpieczna wersja z diagnostyką ---
 inline double JgetReqSafe(const nlohmann::json& J, const std::string& path) {
   try {
     return JgetReq(J, path);
   } catch (const std::exception& e) {
     std::cerr << "\n[JSON ERROR] while reading path: " << path
               << "\n  what(): " << e.what() << "\n" << std::endl;
-    throw;  // przekazujemy wyjątek dalej, by zatrzymać node
+    throw;
   }
 }
 
-// --- Opcjonalne pole z wartością domyślną ---
 inline double JgetOpt(const nlohmann::json& J, const std::string& path, double def){
   try { return JgetReq(J, path); } catch(...) { return def; }
 }
 
-//// ============================================================
-////  Budowa banku parametrów z pliku JSON
-//// ============================================================
+// ============================================================
+//  Budowa banku parametrów z pliku JSON
+//  Uwaga: klucze ParamBank (np. "max_steer") są płaskie,
+//  ale ich wartości są w JSON pod sekcjami vehicle/tire/...
+// ============================================================
 inline ParamBank build_param_bank(const nlohmann::json& J){
   ParamBank P;
 
-  //// --- Vehicle dynamics ---
+  // --- Vehicle dynamics ---
   P.add("g",   JgetReqSafe(J,"vehicle.g"));
   P.add("m",   JgetReqSafe(J,"vehicle.m"));
   P.add("h",   JgetReqSafe(J,"vehicle.h"));
@@ -93,9 +84,7 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("h1_roll", JgetReqSafe(J,"vehicle.h1_roll"));
   P.add("h2_roll", JgetReqSafe(J,"vehicle.h2_roll"));
 
-  double a_val = J.contains("vehicle") && J["vehicle"].contains("a")
-                   ? J["vehicle"]["a"].get<double>()
-                   : (P.get("w") - P.get("b"));
+  const double a_val = JgetOpt(J, "vehicle.a", P.get("w") - P.get("b"));
   P.add("a", a_val);
 
   P.add("t_front",   JgetReqSafe(J,"vehicle.T_front"));
@@ -113,79 +102,162 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("angle_construction_rear",  JgetReqSafe(J,"vehicle.angle_construction_rear"));
   P.add("r_front",   JgetReqSafe(J,"vehicle.r_front"));
   P.add("r_rear",    JgetReqSafe(J,"vehicle.r_rear"));
+// --- Tire parameters (MF6.1, no camber) ---
 
-  //// --- Tire parameters ---
-  P.add("pCx1",    JgetReqSafe(J,"tire.pCx1"));
-  P.add("pDx1",    JgetReqSafe(J,"tire.pDx1"));
-  P.add("pDx2",    JgetReqSafe(J,"tire.pDx2"));
-  P.add("pEx1",    JgetReqSafe(J,"tire.pEx1"));
-  P.add("pKx1",    JgetReqSafe(J,"tire.pKx1"));
-  P.add("pKx3",    JgetReqSafe(J,"tire.pKx3"));
-  P.add("lambda_x",JgetReqSafe(J,"tire.lambda_x"));
-  P.add("pCy1",    JgetReqSafe(J,"tire.pCy1"));
-  P.add("pDy1",    JgetReqSafe(J,"tire.pDy1"));
-  P.add("pDy2",    JgetReqSafe(J,"tire.pDy2"));
-  P.add("pEy1",    JgetReqSafe(J,"tire.pEy1"));
-  P.add("pKy1",    JgetReqSafe(J,"tire.pKy1"));
-  P.add("pKy2",    JgetReqSafe(J,"tire.pKy2"));
-  P.add("lambda_y",JgetReqSafe(J,"tire.lambda_y"));
-  P.add("N0",      JgetReqSafe(J,"tire.N0"));
-  P.add("epsilon", JgetReqSafe(J,"tire.epsilon")); // regularzycja slipów zgodnie z Tire and Vehicle Dynamics książka Hans B. Pacejka , 185 strona
-  P.add("relax_time_slip_angle_first_guees", JgetReqSafe(J,"tire.relax_length_slip_angle_piorek")); // inżynierka piórek rozdział o bocznej relaksacji
-  P.add("relax_time_slip_ratio_first_guees", 0.4 * P.get("relax_time_slip_angle_first_guees")); // / przybliżenie z dupy z wykresu stąd : https://www.researchgate.net/publication/3415307_Tire_Dynamic_Deflection_and_Its_Impact_on_Vehicle_Longitudinal_Dynamics_and_Control
-  P.add("cy", JgetReqSafe(J,"tire.cy_first_guees")); // // wartosc z dupy stąd https://research.tue.nl/en/studentTheses/analysis-and-development-of-formula-student-racing-tyres
-  P.add("dy", 0.3*P.get("cy") * P.get("relax_time_slip_angle_first_guees")); // z dupy z długośći relaksacji i z teorii systemów 2 rzędu 
-  P.add("cx", JgetReqSafe(J,"tire.cx_first_guees")); // // wartosc z dupy stąd https://research.tue.nl/en/studentTheses/analysis-and-development-of-formula-student-racing-tyres
-  P.add("dx", 0.3*P.get("cx") * P.get("relax_time_slip_ratio_first_guees")); // z dupy z długośći relaksacji i z teorii systemów 2 rzędu
+  // Longitudinal
+  P.add("pCx1",     JgetReqSafe(J,"tire.pCx1"));
 
-  //// --- Drivetrain ---
-  P.add("P_max_drive",        JgetReqSafe(J,"drivetrain.P_max_drive"));
-  P.add("P_min_recup",        JgetReqSafe(J,"drivetrain.P_min_recup"));
-  P.add("drivetrain_timescale", JgetReqSafe(J,"drivetrain.drivetrain_timescale")); // z dupy fest
-  P.add("max_torque",       0.95* JgetReqSafe(J,"drivetrain.max_torque")); // przyjęto 95% sprawności przekładni( do zmierzenia)
-  P.add("min_torque", 0.95* JgetReqSafe(J,"drivetrain.min_torque")); // przyjęto 95% sprawności przekładni( do zmierzenia)
-  //// --- Steering system ---
+  P.add("pDx1",     JgetReqSafe(J,"tire.pDx1"));
+  P.add("pDx2",     JgetReqSafe(J,"tire.pDx2"));
+
+  P.add("pEx1",     JgetReqSafe(J,"tire.pEx1"));
+  P.add("pEx2",     JgetReqSafe(J,"tire.pEx2"));
+  P.add("pEx3",     JgetReqSafe(J,"tire.pEx3"));
+  P.add("pEx4",     JgetReqSafe(J,"tire.pEx4"));
+
+  P.add("pKx1",     JgetReqSafe(J,"tire.pKx1"));
+  P.add("pKx2",     JgetReqSafe(J,"tire.pKx2"));
+  P.add("pKx3",     JgetReqSafe(J,"tire.pKx3"));
+
+  P.add("pHx1",     JgetReqSafe(J,"tire.pHx1"));
+  P.add("pHx2",     JgetReqSafe(J,"tire.pHx2"));
+
+  P.add("pVx1",     JgetReqSafe(J,"tire.pVx1"));
+  P.add("pVx2",     JgetReqSafe(J,"tire.pVx2"));
+
+  P.add("lambda_x", JgetReqSafe(J,"tire.lambda_x"));
+
+
+  // Lateral
+  P.add("pCy1",     JgetReqSafe(J,"tire.pCy1"));
+
+  P.add("pDy1",     JgetReqSafe(J,"tire.pDy1"));
+  P.add("pDy2",     JgetReqSafe(J,"tire.pDy2"));
+
+  P.add("pEy1",     JgetReqSafe(J,"tire.pEy1"));
+  P.add("pEy2",     JgetReqSafe(J,"tire.pEy2"));
+  P.add("pEy3",     JgetReqSafe(J,"tire.pEy3"));
+
+  P.add("pKy1",     JgetReqSafe(J,"tire.pKy1"));
+  P.add("pKy2",     JgetReqSafe(J,"tire.pKy2"));
+  P.add("pKy4",     JgetReqSafe(J,"tire.pKy4"));   // jeśli zostawiasz w kodzie (możesz nie używać, ale w configu jest)
+
+  P.add("pHy1",     JgetReqSafe(J,"tire.pHy1"));
+  P.add("pHy2",     JgetReqSafe(J,"tire.pHy2"));
+
+  P.add("pVy1",     JgetReqSafe(J,"tire.pVy1"));
+  P.add("pVy2",     JgetReqSafe(J,"tire.pVy2"));
+
+  P.add("lambda_y", JgetReqSafe(J,"tire.lambda_y"));
+  P.add("N0",       JgetReqSafe(J,"tire.N0"));
+  P.add("epsilon",  JgetReqSafe(J,"tire.epsilon"));
+
+
+  P.add("relax_time_slip_angle_first_guees", JgetReqSafe(J,"tire.relax_length_slip_angle_piorek"));
+  P.add("relax_time_slip_ratio_first_guees", 0.4 * P.get("relax_time_slip_angle_first_guees"));
+  P.add("cy", JgetReqSafe(J,"tire.cy_first_guees"));
+  P.add("dy", 0.3 * P.get("cy") * P.get("relax_time_slip_angle_first_guees"));
+  P.add("cx", JgetReqSafe(J,"tire.cx_first_guees"));
+  P.add("dx", 0.3 * P.get("cx") * P.get("relax_time_slip_ratio_first_guees"));
+
+  // --- Drivetrain ---
+  P.add("P_max_drive",          JgetReqSafe(J,"drivetrain.P_max_drive"));
+  P.add("P_min_recup",          JgetReqSafe(J,"drivetrain.P_min_recup"));
+  P.add("drivetrain_timescale", JgetReqSafe(J,"drivetrain.drivetrain_timescale"));
+
+  // Uwaga: wcześniej miałeś 0.95*... (sprawność). Jeśli to ma być w configu, przenieś do JSON.
+  P.add("max_torque",           JgetReqSafe(J,"drivetrain.max_torque"));
+  P.add("min_torque",           JgetReqSafe(J,"drivetrain.min_torque"));
+
+  // --- Steering system ---
   P.add("natural_frequency_steering_system", JgetReqSafe(J,"steering_system.natural_frequency_steering_system"));
   P.add("steering_system_damping",           JgetReqSafe(J,"steering_system.steering_system_damping"));
-  P.add("max_steer" , JgetReqSafe(J, "steering_system.max_steer"));
-  P.add("min_steer", JgetReq(J, "steering_system.min_steer"));
+  P.add("max_steer",                         JgetReqSafe(J,"steering_system.max_steer"));
+  P.add("min_steer",                         JgetReqSafe(J,"steering_system.min_steer"));
 
-
-  //// --- Simulation ---
+  // --- Simulation ---
   P.add("simulation_time_step", JgetReqSafe(J,"simulation.time_step"));
 
-  //// --- DV board and PID ---
-  P.add("steer_input_delay", JgetReqSafe(J,"dv_board.dealy_from_control_to_maxon_command"));
-  P.add("torque_input_delay", JgetReqSafe(J,"dv_board.dealy_from_control_to_torque_command"));
-  P.add("wheel_encoder_reading_time_step",     JgetReqSafe(J,"dv_board.wheel_encoder_reading_time_steep"));
-  P.add("pid_time_step",                       JgetReqSafe(J,"dv_board.pid_time_step"));
-  P.add("pid_p",                               JgetReqSafe(J,"dv_board.pid_p"));
-  P.add("pid_i",                               JgetReqSafe(J,"dv_board.pid_i"));
-  P.add("pid_d",                               JgetReqSafe(J,"dv_board.pid_d"));
-  P.add("pid_max",                              JgetReqSafe(J,"dv_board.pid_max"));
-  P.add("pid_min",                              JgetReqSafe(J,"dv_board.pid_min"));
-  P.add("pid_scale",                              JgetReqSafe(J,"dv_board.pid_scale"));
+  // --- DV board and PID (zgodnie z configiem params_default_lem.json) ---
+  P.add("dv_board_to_maxon_time_step",        JgetReqSafe(J,"dv_board.dv_board_to_maxon_time_step"));
+  P.add("control_to_dv_boad_read_time_step",  JgetReqSafe(J,"dv_board.control_to_dv_boad_read_time_step"));
+  P.add("wheel_encoder_reading_time_step",    JgetReqSafe(J,"dv_board.wheel_encoder_reading_time_step"));
+  P.add("dv_board_tractive_system_time_step", JgetReqSafe(J,"dv_board.dv_board_tractive_system_time_step"));
+
+  // W configu masz pid_speed_* oraz pid_traction_*
+  P.add("pid_speed_p",   JgetReqSafe(J,"dv_board.pid_speed_p"));
+  P.add("pid_speed_i",   JgetReqSafe(J,"dv_board.pid_speed_i"));
+  P.add("pid_speed_d",   JgetReqSafe(J,"dv_board.pid_speed_d"));
+  P.add("pid_speed_max", JgetReqSafe(J,"dv_board.pid_speed_max"));
+  P.add("pid_speed_min", JgetReqSafe(J,"dv_board.pid_speed_min"));
+
+  // Nazwa w ParamBank musi odpowiadać temu, co używa sim_loop.cpp ("pid_scale")
+  // a wartość pochodzi z JSON: dv_board.pid_speed_scale
+  P.add("pid_speed_scale",           JgetReqSafe(J,"dv_board.pid_speed_scale"));
+
+  // Traction control PID
+  P.add("pid_traction_p", JgetReqSafe(J,"dv_board.pid_traction_p"));
+  P.add("pid_traction_i", JgetReqSafe(J,"dv_board.pid_traction_i"));
+  P.add("pid_traction_d", JgetReqSafe(J,"dv_board.pid_traction_d"));
+
+  // Limity TC w configu są rozdzielone drive/brake
+  P.add("pid_traction_max_drive", JgetReqSafe(J,"dv_board.pid_traction_max_drive"));
+  P.add("pid_traction_min_drive", JgetReqSafe(J,"dv_board.pid_traction_min_drive"));
+  P.add("pid_traction_max_brake", JgetReqSafe(J,"dv_board.pid_traction_max_brake"));
+  P.add("pid_traction_min_brake", JgetReqSafe(J,"dv_board.pid_traction_min_brake"));
+
+  // Dodatkowe parametry dla PID trakcji
+  P.add("pid_traction_anti_windup_gain_drive", JgetReqSafe(J,"dv_board.pid_traction_anti_windup_gain_drive"));
+  P.add("pid_traction_anti_windup_gain_brake", JgetReqSafe(J,"dv_board.pid_traction_anti_windup_gain_brake"));
+  P.add("pid_traction_leak_time_scale_drive",  JgetReqSafe(J,"dv_board.pid_traction_leak_time_scale_drive"));
+  P.add("pid_traction_leak_time_scale_brake",  JgetReqSafe(J,"dv_board.pid_traction_leak_time_scale_brake"));
+
+  // Slip targets + progi histerezy (on/off)
+  P.add("target_slip_drive", JgetReqSafe(J,"dv_board.target_slip_drive"));
+  P.add("target_slip_brake", JgetReqSafe(J,"dv_board.target_slip_brake"));
+  P.add("slip_drive_on",     JgetReqSafe(J,"dv_board.slip_drive_on"));
+  P.add("slip_drive_off",    JgetReqSafe(J,"dv_board.slip_drive_off"));
+  P.add("slip_brake_on",     JgetReqSafe(J,"dv_board.slip_brake_on"));
+  P.add("slip_brake_off",    JgetReqSafe(J,"dv_board.slip_brake_off"));
+
+    //// --- Pose / INS ---
+    P.add("pose_noise",        JgetReqSafe(J,"pose.pose_noise"));
+    P.add("orientation_noise", JgetReqSafe(J,"pose.orientation_noise"));
+    P.add("rotation_noise",    JgetReqSafe(J,"pose.rotation_noise"));
+    P.add("ins_frequancy",     JgetReqSafe(J,"pose.ins_frequancy"));
+    P.add("gps_speed_frequancy", JgetReqSafe(J,"pose.gps_speed_frequancy"));
+    P.add("gps_speed_noise",   JgetReqSafe(J,"pose.speed_gps_noise"));
   
-
-  //// --- Pose / INS ---
-  P.add("pose_noise",        JgetReqSafe(J,"pose.pose_noise"));
-  P.add("orientation_noise", JgetReqSafe(J,"pose.orientation_noise"));
-  P.add("rotation_noise",    JgetReqSafe(J,"pose.rotation_noise"));
-  P.add("ins_frequancy",     JgetReqSafe(J,"pose.ins_frequancy"));
-
-  //// --- Vision ---
-  P.add("fov_x",                       JgetReqSafe(J,"vision.fov_x"));
-  P.add("fov_y",                       JgetReqSafe(J,"vision.fov_y"));
-  P.add("z_camera_to_cog",             JgetReqSafe(J,"vision.z_camera_to_cog"));
-  P.add("x_camera_to_cog",             JgetReqSafe(J,"vision.x_camera_to_cog"));
-  P.add("y_camera_to_cog",             JgetReqSafe(J,"vision.y_camera_to_cog"));
-  P.add("cone_height",                 JgetReqSafe(J,"vision.cone_height"));
-  P.add("frames_per_second",           JgetReqSafe(J,"vision.frames_per_second"));
-  P.add("mean_time_of_vision_execuction", JgetReqSafe(J,"vision.mean_time_of_vision_execuction"));
-  P.add("var_of_vision_time_execution",   JgetReqSafe(J,"vision.var_of_vision_time_execution"));
-  P.add("camera_range",               JgetReqSafe(J,"vision.camera_range"));
-  P.add("vision_noise_a",        JgetReqSafe(J,"vision.vision_noise_a"));
-  P.add("vision_noise_b",        JgetReqSafe(J,"vision.vision_noise_b"));
+    // --- Dodatkowe sensory pose (gyro/acc/gps) ---
+    P.add("gyro_noise_std",         JgetReqSafe(J,"pose.gyro_noise"));
+    P.add("acc_noise_std",          JgetReqSafe(J,"pose.acc_noise"));
+    P.add("acc_frequancy",      JgetReqSafe(J,"pose.acc_frequancy"));
+    P.add("gyro_frequancy",     JgetReqSafe(J,"pose.gyro_frequancy"));
+    P.add("gps_frequancy",      JgetReqSafe(J,"pose.gps_frequancy"));
+    P.add("gps_position_noise",          JgetReqSafe(J,"pose.gps_noise"));
+    P.add("gps_yaw_noise",   JgetReqSafe(J,"pose.gps_heding_noise"));
+  
+    P.add("calibration_time",         JgetReqSafe(J,"pose.calibration_time"));
+    P.add("acc_bias_drift_time_sec",  JgetReqSafe(J,"pose.acc_bias_drift_time_sec"));
+    P.add("gyro_bias_drift_time_sec", JgetReqSafe(J,"pose.gyro_bias_drift_time_sec"));
+    P.add("acc_bias_init_std",        JgetReqSafe(J,"pose.acc_bias_init_std"));
+    P.add("gyro_bias_init_std",       JgetReqSafe(J,"pose.gyro_bias_init_std"));
+    P.add("gyro_bias_rw" , P.get("gyro_bias_init_std")/std::sqrt(P.get("gyro_bias_drift_time_sec"))); // z dupy
+    P.add("acc_bias_rw" ,  P.get("acc_bias_init_std")/std::sqrt(P.get("acc_bias_init_std"))); // z dupy 
+    
+  // --- Vision ---
+  P.add("fov_x",                         JgetReqSafe(J,"vision.fov_x"));
+  P.add("fov_y",                         JgetReqSafe(J,"vision.fov_y"));
+  P.add("z_camera_to_cog",               JgetReqSafe(J,"vision.z_camera_to_cog"));
+  P.add("x_camera_to_cog",               JgetReqSafe(J,"vision.x_camera_to_cog"));
+  P.add("y_camera_to_cog",               JgetReqSafe(J,"vision.y_camera_to_cog"));
+  P.add("cone_height",                   JgetReqSafe(J,"vision.cone_height"));
+  P.add("frames_per_second",             JgetReqSafe(J,"vision.frames_per_second"));
+  P.add("mean_time_of_vision_execuction",JgetReqSafe(J,"vision.mean_time_of_vision_execuction"));
+  P.add("var_of_vision_time_execution",  JgetReqSafe(J,"vision.var_of_vision_time_execution"));
+  P.add("camera_range",                  JgetReqSafe(J,"vision.camera_range"));
+  P.add("vision_noise_a",                JgetReqSafe(J,"vision.vision_noise_a"));
+  P.add("vision_noise_b",                JgetReqSafe(J,"vision.vision_noise_b"));
 
   return P;
 }

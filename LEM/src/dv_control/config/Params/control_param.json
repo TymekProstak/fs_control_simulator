@@ -27,12 +27,15 @@
   },
 
   "velocity_planner":{
-    "max_accel": 5.0,
-    "max_decel": -5.0,
-    "v_min": 1.0,
-    "v_max": 10.5,
-    "max_corrnering_accel": 5.0,
-    "saftey_factor": 1.0
+    "max_accel": 9.1,
+    "max_decel": -9.1,
+    "v_min": 2.0,
+    "v_max": 12.5,
+    "max_corrnering_accel": 12.7,
+    "saftey_factor": 0.95,
+    "max jerk": 25.0,
+    "spatial_step": 0.1,
+    "number_of_jerk_merging_iterations": 3
 
   },
 
@@ -49,8 +52,8 @@
     "Iz": 85.0,
     "lf": 0.738,
     "lr": 0.792,
-    "Cf": 52810.0,
-    "Cr": 52810.0,
+    "Cf": 45180.0,
+    "Cr": 45180.0,
     "steer_natural_freq" : 15.0,
     "steer_damping" : 0.9,
     "whell_radius": 0.195,
@@ -58,10 +61,10 @@
    },
    "cost":{
     "Q_y": 50.0,
-    "Q_psi": 100.0,
+    "Q_psi": 200.0,
     "Q_r" : 1.0,
     "Q_delta": 1.0,
-    "R_ddelta": 300.0
+    "R_ddelta": 600.0
    },
    "solver":{
     "max_iter": 150,

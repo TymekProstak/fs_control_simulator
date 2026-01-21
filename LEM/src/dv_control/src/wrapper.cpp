@@ -29,7 +29,8 @@ Controller::Controller(ros::NodeHandle &nh, const ParamBank &param):
         0.0, // delta_dot
         0.0, // vx
         0.0, // vy
-        0.0  // yaw_rate
+        0.0 , // yaw_rate
+        0.5  // acc
     };
 
     mpc_state = {
@@ -264,6 +265,7 @@ void Controller::publishControlCommand(double steering_angle,double torque_reque
 
     controlMsg.move_type = dv_interfaces::Control::SPEED_KMH;
     controlMsg.serviceBrake = 0;
+    controlMsg.current_speed = 0;
 
     pub_control.publish(controlMsg);
 
@@ -277,6 +279,8 @@ void Controller::publishControlCommand(double steering_angle,double torque_reque
     
         controlMsg.move_type = dv_interfaces::Control::TORQUE_PERCENTAGE;
         controlMsg.serviceBrake = 0;
+
+        controlMsg.current_speed = static_cast<float>(current_state.vx);
     
         pub_control.publish(controlMsg);
     }
@@ -444,6 +448,7 @@ double Controller::acc_to_throttle_percentage(double a_desired)
     double throttle_command = torque_required / max_motor_torque;
 
     throttle_command = std::clamp(throttle_command, -1.0, 1.0);
+    current_state.acc = a_desired;
     //std::cout<< "THROTTLE:"<<throttle_command<<std::endl;
 
     return throttle_command;
@@ -601,17 +606,17 @@ void Controller::convert_state_to_mpc_state()
     // );
 
     // 2) gdy wykryję skok — WARN natychmiast
-    if (jump) {
-        ROS_WARN_STREAM(
-            "[MPC JUMP] d_ey=" << d_ey << " (ey=" << ey_prev << "->" << ey << ")"
-            << " | d_epsi=" << d_epsi << " (epsi=" << epsi_prev << "->" << epsi << ")"
-            << " | idx_closest=" << idx_closest
-            << " | seg=(" << best_i0 << "," << best_i1 << ")"
-            << " | seg_changed=" << (seg_changed ? 1 : 0)
-            << " | car_xy=(" << current_state.X << "," << current_state.Y << ")"
-            << " | proj_xy=(" << proj_X << "," << proj_Y << ")"
-        );
-    }
+    // if (jump) {
+    //     ROS_WARN_STREAM(
+    //         "[MPC JUMP] d_ey=" << d_ey << " (ey=" << ey_prev << "->" << ey << ")"
+    //         << " | d_epsi=" << d_epsi << " (epsi=" << epsi_prev << "->" << epsi << ")"
+    //         << " | idx_closest=" << idx_closest
+    //         << " | seg=(" << best_i0 << "," << best_i1 << ")"
+    //         << " | seg_changed=" << (seg_changed ? 1 : 0)
+    //         << " | car_xy=(" << current_state.X << "," << current_state.Y << ")"
+    //         << " | proj_xy=(" << proj_X << "," << proj_Y << ")"
+    //     );
+    // }
     ey_count++;
     ey_sum += std::abs(ey);
     epsi_sum += std::abs(epsi);
@@ -626,8 +631,22 @@ void Controller::convert_state_to_mpc_state()
     mpc_debug_msg.epsi_avg = epsi_sum / ey_count;
     mpc_debug_msg.ey_current = mpc_state.ey;
     mpc_debug_msg.epsi_current = mpc_state.epsi;
-    mpc_debug_msg.v_ref = ref_path.velocity_ref(0);
+    mpc_debug_msg.v_ref = ref_path.velocity_ref(1);
+    mpc_debug_msg.kappa_ref = ref_path.curvature(0);
+    if(std::abs(ref_path.curvature(0))>1e-4){
+    mpc_debug_msg.R_ref = 1.0/ref_path.curvature(0);
+    }
+    else {
+    mpc_debug_msg.R_ref = 1e4; // duży promień przy małej krzywiźnie
+    }
+    mpc_debug_msg.alat_ref = ref_path.velocity_ref(0)*ref_path.velocity_ref(0)*std::abs(ref_path.curvature(0));
+    mpc_debug_msg.v_s_current = current_state.vx*std::cos(mpc_state.epsi) - current_state.vy*std::sin(mpc_state.epsi);
+    v_s_sum += current_state.vx*std::cos(mpc_state.epsi) - current_state.vy*std::sin(mpc_state.epsi);
+    mpc_debug_msg.v_s_avg = v_s_sum/ey_count;
     pub_mpc_debug.publish(mpc_debug_msg);
+    if(std::abs(mpc_debug_msg.R_ref )< 4.5){
+        ROS_WARN_STREAM_THROTTLE(1.0,"[MPC] Small turning radius R_ref="<< mpc_debug_msg.R_ref<<" m");
+    }
 }
         
 } // namespace v2_control

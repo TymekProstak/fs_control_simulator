@@ -1,8 +1,9 @@
 #include "sim_loop.hpp"
 #include <iostream>   // <<< diagnostyka
 #include <exception>  // <<< diagnostyka
-
-
+#include <algorithm>  // std::clamp
+#include <sstream>
+#include <iomanip>
 
 namespace lem_dynamics_sim_ {
 
@@ -27,6 +28,29 @@ namespace lem_dynamics_sim_ {
         std::uniform_int_distribution<int> dist(0, period - 1);
         return dist(phase_rng_);
     }
+
+    static inline void update_top_abs(std::vector<double>& v, double x, std::size_t N = 10)
+    {
+        const double ax = std::abs(x);
+
+        // jeśli jeszcze nie ma N elementów -> wrzuć i posortuj
+        if (v.size() < N) {
+            v.push_back(x);
+            std::sort(v.begin(), v.end(),
+                    [](double a, double b){ return std::abs(a) > std::abs(b); });
+            return;
+        }
+
+        // jeśli x nie jest większe niż najmniejsze z TOP -> ignore
+        double smallest_abs = std::abs(v.back());
+        if (ax <= smallest_abs) return;
+
+        // podmień najmniejsze i ponownie posortuj
+        v.back() = x;
+        std::sort(v.begin(), v.end(),
+                [](double a, double b){ return std::abs(a) > std::abs(b); });
+    }
+
     
 
 
@@ -81,17 +105,10 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     
 
     // 2) PID / sterowanie – reset
-    std::cout << "[INIT] Resetting control/PID state..." << std::endl;
-    pid_prev_I_ = 0.0;
-    pid_prev_error_ = 0.0;
-    target_wheel_speed_ = 0.0;
-    target_wheel_speed_request = 0.0;
-    pid_speed_out_ = 0.0;
-    pid_omega_actual_ = 0.0;
-    torque_command_ = 0.0; 
-    torque_command_to_invert_ = 0.0; // actual request to a motor inverter
-    steer_command_ = 0.0; 
-    torque_mode_ = 0; 
+    std::cout << "[INIT] Resetting control/PIDs state..." << std::endl;
+
+    ///
+
 
     // 3) Interwały krokowe (po wczytaniu P_)
     std::cout << "[INIT] Computing step intervals from parameters..." << std::endl;
@@ -99,20 +116,23 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
         compute_step_intervals_from_params_();
         std::cout << "[INIT][OK] Step intervals computed." << std::endl;
 
-        // ===== phases: rozstrzel czujniki/aktuatory w obrębie ich okresu =====
-        phase_camera_shoot_          = pick_phase_(step_of_camera_shoot_);
-        phase_wheel_encoder_reading_ = pick_phase_(step_of_wheel_encoder_reading_);
-        phase_ins_reading_           = pick_phase_(step_of_ins_reading_);
-        phase_torque_apply_          = pick_phase_(step_of_torque_input_application_);
-        phase_steer_apply_           = pick_phase_(step_of_steer_input_application_);
-        phase_pid_update_            = pick_phase_(step_number_pid_update_period_);
+        // 6) Fazy (rozstrzelenie w obrębie okresu)
+    phase_camera_shoot_          = pick_phase_(step_of_camera_shoot_);
+    phase_wheel_encoder_reading_ = pick_phase_(step_of_wheel_encoder_reading_);
+    phase_ins_reading_           = pick_phase_(step_of_ins_reading_);
+
+    // READ / SEND
+    phase_torque_apply_ = pick_phase_(step_of_control_input_read_);
+    phase_steer_apply_  = pick_phase_(step_of_steer_input_sending_);
+    phase_gps_speed_reading_    = pick_phase_(step_gps_speed_reading_);
+
 
         std::cout << "[PHASES] cam="    << phase_camera_shoot_
                 << " enc="            << phase_wheel_encoder_reading_
                 << " ins="            << phase_ins_reading_
                 << " torque_apply="   << phase_torque_apply_
                 << " steer_apply="    << phase_steer_apply_
-                << " pid="            << phase_pid_update_
+                << " gps_speed="      << phase_gps_speed_reading_
           << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "[INIT][FAIL] compute_step_intervals_from_params_ failed. what(): " << e.what() << std::endl;
@@ -124,7 +144,8 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     try {
         sub_control_ = nh.subscribe<dv_interfaces::Control>(
             "/dv_board/control", 1, &Simulation_lem_ros_node::dv_control_callback, this, ros::TransportHints().tcpNoDelay());
-
+        sub_mpc_debug_ = nh.subscribe<dv_interfaces::MPCDebug>(
+            "/control/mpc_debug", 1, &Simulation_lem_ros_node::mpc_debug_callback_, this);
         pub_ins_   = nh.advertise<nav_msgs::Odometry>("/ins/pose", 1);
         pub_cones_ = nh.advertise<dv_interfaces::Cones>("/dv_cone_detector/cones", 1);
         pub_markers_cones_gt_  = nh.advertise<visualization_msgs::MarkerArray>("/viz/cones_gt", 1,true);
@@ -159,23 +180,20 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
         std::cerr << "[INIT][WARN] publish_cones_gt_markers_ failed. what(): " << e.what() << std::endl;
     }
 
-    // 6) Logowanie - domyślnie wyłączone
-    std::cout << "[INIT] Logging setup..." << std::endl;
+    // 6) Inicjalizacja logowania metryk jazdy
     if (!log_file.empty()) {
-        log_file_.open(log_file, std::ios::out);
-        if (log_file_.is_open()) {
-            logging_enabled_ = true;
-            log_file_ << "time,x,y,yaw,vx,vy,yaw_rate,torque,steer,"
-                         "omega_rr,omega_rl,torque_request,steer_request,ax,ay\n";
-            start_logging_thread_();
-            std::cout << "[INIT][OK] Logging enabled -> " << log_file << std::endl;
+        metrics_log_file_path_ = log_file;
+        const auto pos = metrics_log_file_path_.rfind(".csv");
+        if (pos != std::string::npos) {
+            metrics_log_file_path_.replace(pos, 4, "_metrics.csv");
         } else {
-            std::cerr << "[INIT][WARN] Cannot open log file: " << log_file << std::endl;
-            ROS_WARN("Nie udało się otworzyć pliku logowania: %s", log_file.c_str());
+            metrics_log_file_path_ += "_metrics.csv";
         }
     } else {
-        std::cout << "[INIT] Logging disabled (empty path)." << std::endl;
+        metrics_log_file_path_.clear(); // metryki wyłączone jeśli log_file pusty
     }
+
+   
 
     // 7) Kolejka kamery pusta na start
     camera_queue_.clear();
@@ -183,125 +201,154 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
 
     ROS_WARN_STREAM("Init yaw=" << state_.yaw << " vy=" << state_.vy);
 
+    // --- Traction control PID init (drive/brake) ---
+    {
+        PIDParams drive{};
+        drive.Kp = P_.get("pid_traction_p");
+        drive.Ki = P_.get("pid_traction_i");
+        drive.Kd = P_.get("pid_traction_d");
+
+        // Limity TC wg configu
+        drive.saturation_upper = P_.get("pid_traction_max_drive");
+        drive.saturation_lower = P_.get("pid_traction_min_drive");
+
+        drive.anti_windup_gain = P_.get("pid_traction_anti_windup_gain_drive");
+        drive.leak_time_scale  = P_.get("pid_traction_leak_time_scale_drive");
+        traction_control_pid_drive_.set_params(drive);
+        traction_control_pid_drive_.reset();
+
+        PIDParams brake{};
+        brake.Kp = P_.get("pid_traction_p");
+        brake.Ki = P_.get("pid_traction_i");
+        brake.Kd = P_.get("pid_traction_d");
+
+        brake.saturation_upper = P_.get("pid_traction_max_brake");
+        brake.saturation_lower = P_.get("pid_traction_min_brake");
+
+        brake.anti_windup_gain = P_.get("pid_traction_anti_windup_gain_brake");
+        brake.leak_time_scale  = P_.get("pid_traction_leak_time_scale_brake");
+        traction_control_pid_brake_.set_params(brake);
+        traction_control_pid_brake_.reset();
+    }
+
+    // --- Kalman init (jeśli używany) ---
+    {
+        // KalmanFilter ma konstruktor z ParamBank; tworzymy i resetujemy go po wczytaniu P_
+        kalman_filter_ = KalmanFilter(P_);
+
+        // opcjonalnie: ins_mode z ROS param (gauss|kalman)
+        // (jeśli param nie istnieje, zostaje domyślne z .hpp)
+        std::string mode;
+        if (nh.getParam("ins_mode", mode)) {
+            ins_mode_ = mode;
+        }
+    }
+    int sim_time_ ;
+    if(nh.getParam("sim_time", sim_time_)){
+        sim_time = sim_time_;
+    }
+
+    std::cout << "[INIT] sim_time = " << sim_time_
+            << "  ( <0 => infinite , >=0 => stop after sim_time seconds )"
+            << std::endl;
+
+    ROS_WARN_STREAM("[INIT] sim_time=" << sim_time);
 }
 
 // ====== Destruktor ======
 Simulation_lem_ros_node::~Simulation_lem_ros_node() {
-    // diagnostyka zamykania
-    std::cout << "[DTOR] Shutting down logging thread..." << std::endl;
-    stop_logging_thread_();
-    if (log_file_.is_open()) {
-        std::cout << "[DTOR] Flushing/closing log file..." << std::endl;
-        log_file_.flush();
-        log_file_.close();
-    }
-    std::cout << "[DTOR][DONE]" << std::endl;
+    std::cout << "[DTOR] Saving ride metrics..." << std::endl;
+    log_metric_of_ride_data_();
+
 }
 
 // ====== Interfejs publiczny ======
 void Simulation_lem_ros_node::step() {
-    // minimalna diagnostyka kroku (bez floodu)
-    // jeśli chcesz, możesz dodać licznik co N kroków
-
-    // jako że symulacja tylko do testów kontroli to opoźnienie i szum sensorów ustawione w configu na zero
-    // nie ma robienie strzelania zdjęc kamerą i kolejkowania
     try {
-        // 1) Zastosuj wejścia z opóźnieniem
-        apply_delayed_inputs_if_due_();
-
-        // 2) Odczyty czujników wg harmonogramu
+        read_control_by_dv_board_if_due();
         read_wheel_encoder_if_due_();
         read_ins_if_due_();
-        //shoot_camera_or_enqueue_if_due_();
 
-        // 3) Aktualizacja PID
-        if (torque_mode_ == 1)
-            update_pid_if_due_(); // tryb speed
-        else
-            torque_command_to_invert_ = torque_command_; // tryb torque
+        send_to_ts_if_due();
+        send_steer_to_maxon_if_due_();
 
-        // 4) Publikacje ramek, które „dojrzały”
-        //publish_ready_camera_frames_from_queue_();
+        euler_sim_timestep(state_, Input(torque_command_to_invert_, steer_command_to_maxon), P_);
 
-        // 5) Krok fizyki (Euler)
-        euler_sim_timestep(state_, Input(torque_command_to_invert_, steer_command_), P_);
 
-        // 6) Logowanie co 10 kroków i publikowanie
-        if (logging_enabled_ && step_number_ % 10 == 0)
-            log_state_();
-        
-        
-       
-        //state_.vx = 5.0; // stała prędkość wzdłużna 5 m/s
-        // 7) Inkrement kroku
         ++step_number_;
-         
+
         pub_full_state_();
         publish_bolid_marker_();
-        
+        publish_bolid_tf_true();
+
+        // ======================================================
+        // STOP AFTER sim_time_ seconds (if enabled)
+        // ======================================================
+        if (sim_time >= 0)
+        {
+            const double dt = P_.get("simulation_time_step");
+            const double t_sim = step_number_ * dt;
+
+            if (t_sim >= static_cast<double>(sim_time))
+            {
+                ROS_WARN_STREAM("[SIM_LOOP] sim_time reached: " << t_sim
+                                << " / " << sim_time << " s -> shutting down ROS node.");
+                ros::shutdown();
+                return;
+            }
+        }
+
     } catch (const std::exception& e) {
         std::cerr << "[STEP][FAIL] Exception in simulation step. what(): " << e.what() << std::endl;
-        throw; // bez zmiany logiki
+        throw;
     }
 }
+
 
 State Simulation_lem_ros_node::get_state() const { return state_; }
 ParamBank Simulation_lem_ros_node::get_parameters() const { return P_; }
 int Simulation_lem_ros_node::get_step_number() const { return step_number_; }
 
 // ====== ROS callback ======
+// caching last requested input from control
 void Simulation_lem_ros_node::dv_control_callback(const dv_interfaces::Control::ConstPtr& msg)
 {
-    DV_control_input u;
-    u.torque      = static_cast<double>(msg->movement);
-    u.steer       = static_cast<double>(msg->steeringAngle_rad);
-    u.torque_mode = static_cast<int>(msg->move_type);
-    last_input_requested_ = u;
-    if(u.torque_mode == 1){
-        target_wheel_speed_request = u.torque;
-    }
+    last_input_cached = *msg;
 }
 
 // ====== Pomocnicze ======
 void Simulation_lem_ros_node::compute_step_intervals_from_params_() {
-    // diagnostyka bez zmian logiki (tylko odczyt wartości i print)
     const double dt = P_.get("simulation_time_step");
     std::cout << "[INTERVALS] dt=" << dt << std::endl;
 
-    // UWAGA: poniższe P_.get(...) mogą rzucić, ale to zachowanie oryginalne
+    // sensor cadences
     step_of_camera_shoot_          = std::max(1, (int)std::round(1.0 / P_.get("frames_per_second") / dt));
     step_of_wheel_encoder_reading_ = std::max(1, (int)std::round(P_.get("wheel_encoder_reading_time_step") / dt));
     step_of_ins_reading_           = std::max(1, (int)std::round(1.0 / P_.get("ins_frequancy") / dt));
-    step_of_torque_input_application_ = std::max(1, (int)std::round(P_.get("torque_input_delay") / dt));
-    step_of_steer_input_application_  = std::max(1, (int)std::round(P_.get("steer_input_delay") / dt));
-    step_number_pid_update_period_    = std::max(1, (int)std::round(P_.get("pid_time_step") / dt));
+    step_gps_speed_reading_ = std::max(1, (int)std::round(1.0 / P_.get("gps_speed_frequancy") / dt));
+    step_imu_reading_            = std::max(1, (int)std::round(1.0 / P_.get("acc_frequancy") / dt));
+   
 
-    std::cout << "[INTERVALS] cam="    << step_of_camera_shoot_
-              << " enc="               << step_of_wheel_encoder_reading_
-              << " ins="               << step_of_ins_reading_
-              << " torque_apply="      << step_of_torque_input_application_
-              << " steer_apply="       << step_of_steer_input_application_
-              << " pid_period="        << step_number_pid_update_period_
+    // READ/SEND pipeline cadences (must exist in .hpp)
+    step_of_control_input_read_       = std::max(1, (int)std::round(P_.get("control_to_dv_boad_read_time_step") / dt));
+    step_of_steer_input_sending_      = std::max(1, (int)std::round(P_.get("dv_board_to_maxon_time_step") / dt));
+    step_number_torque_input_sending_ = std::max(1, (int)std::round(P_.get("dv_board_tractive_system_time_step") / dt));
+
+    std::cout << "[INTERVALS] cam="      << step_of_camera_shoot_
+              << " enc="                << step_of_wheel_encoder_reading_
+              << " ins="                << step_of_ins_reading_
+              << " gps="                << step_gps_speed_reading_
+              << " ctrl_read="          << step_of_control_input_read_
+              << " steer_send="         << step_of_steer_input_sending_
+              << " torque_send="        << step_number_torque_input_sending_
               << std::endl;
 }
 
-void Simulation_lem_ros_node::apply_delayed_inputs_if_due_()
+// dv board reads control topic at fixed cadence
+void Simulation_lem_ros_node::read_control_by_dv_board_if_due()
 {
-    if (is_due(step_number_, step_of_steer_input_application_, phase_steer_apply_)) {
-        steer_command_ = last_input_requested_.steer;
-    }
-
-    if (is_due(step_number_, step_of_torque_input_application_, phase_torque_apply_)) {
-
-        torque_mode_ = int(last_input_requested_.torque_mode);
-
-        if (torque_mode_ == 0) {
-            torque_command_ =
-                double(last_input_requested_.torque) / 100.0 * P_.get("max_torque");
-        } else {
-            target_wheel_speed_ = target_wheel_speed_request;
-        }
-    }
+    if( is_due(step_number_, step_of_control_input_read_, phase_torque_apply_) )
+    last_input_read_by_dv_board = last_input_cached;
 }
 
 void Simulation_lem_ros_node::read_wheel_encoder_if_due_()
@@ -309,40 +356,144 @@ void Simulation_lem_ros_node::read_wheel_encoder_if_due_()
     if (step_of_wheel_encoder_reading_ <= 0) return;
     if (!is_due(step_number_, step_of_wheel_encoder_reading_, phase_wheel_encoder_reading_)) return;
 
-    pid_omega_actual_ = (state_.omega_rr + state_.omega_rl) * 0.5;
+    // LEM/State ma tu tylko tył:
+    wheel_speed_read_right = state_.omega_rr * P_.get("R");
+    wheel_speed_read_left = state_.omega_rl * P_.get("R");
 }
 
+void Simulation_lem_ros_node::read_steer_by_orin_if_due_()
+{
+    if( is_due(step_number_, step_of_steer_input_sending_, phase_steer_apply_) )
+    {
+        steer_command_to_maxon = last_input_cached.steeringAngle_rad;
+    }
 
+
+}
 void Simulation_lem_ros_node::read_ins_if_due_()
 {
-    if (step_of_ins_reading_ <= 0) return;
-    if (!is_due(step_number_, step_of_ins_reading_, phase_ins_reading_)) return;
+    const bool due_ins = (step_of_ins_reading_ > 0) &&
+                         is_due(step_number_, step_of_ins_reading_, phase_ins_reading_);
 
-    const double f_ins = P_.get("ins_frequancy");
-    const double Ts    = 1.0 / std::max(1e-6, f_ins);
+    const bool due_gps = (step_gps_speed_reading_ > 0) &&
+                         is_due(step_number_, step_gps_speed_reading_, phase_gps_speed_reading_);
 
-    (void)Ts; // żeby nie krzyczało jeśli Ts chwilowo nieużyte
+    const bool due_imu = (step_imu_reading_ > 0) &&
+                         is_due(step_number_, step_imu_reading_, 0);
 
-    ins_data_to_be_published_.x   = state_.x   + P_.get("pose_noise") * random_noise_generator_();
-    ins_data_to_be_published_.y   = state_.y   + P_.get("pose_noise") * random_noise_generator_();
-    ins_data_to_be_published_.yaw = state_.yaw + P_.get("orientation_noise") * random_noise_generator_();
+    const int calib_steps = std::max(
+        1,
+        static_cast<int>(P_.get("calibration_time") / P_.get("simulation_time_step"))
+    );
+    const bool calibrated = (step_number_ > calib_steps);
 
-    // prędkości w GLOBALU (world)
-    double vx_global = state_.vx * std::cos(state_.yaw) - state_.vy * std::sin(state_.yaw);
-    double vy_global = state_.vx * std::sin(state_.yaw) + state_.vy * std::cos(state_.yaw);
+    // Jeśli nic nie robimy w tej iteracji – wyjdź
+    if (!due_ins && !due_gps && !due_imu) return;
 
-    ins_data_to_be_published_.vx = vx_global;
-    ins_data_to_be_published_.vy = vy_global;
 
-    ins_data_to_be_published_.yaw_rate =
-        state_.yaw_rate + P_.get("rotation_noise") * random_noise_generator_();
+    // ----------------------------
+    // IMU (cache)
+    // ----------------------------
+    
+    if (due_imu) {
+        ImuMeasurement imu_meas{};
 
-    publish_ins_(ins_data_to_be_published_);
+        const double dt = P_.get("simulation_time_step")*step_imu_reading_;
+
+        // random walk bias update
+        sim_b_g  += P_.get("gyro_bias_rw") * std::sqrt(dt) * random_noise_generator_();
+        sim_b_ax += P_.get("acc_bias_rw")  * std::sqrt(dt) * random_noise_generator_();
+        sim_b_ay += P_.get("acc_bias_rw")  * std::sqrt(dt) * random_noise_generator_();
+
+        // measured IMU
+        imu_meas.yaw_rate = state_.yaw_rate + sim_b_g
+                            + P_.get("gyro_noise_std") * random_noise_generator_();
+        imu_meas.ax = state_.prev_ax + sim_b_ax
+                    + P_.get("acc_noise_std") * random_noise_generator_();
+        imu_meas.ay = state_.prev_ay + sim_b_ay
+                    + P_.get("acc_noise_std") * random_noise_generator_();
+       
+
+        last_imu_ = imu_meas;
+        has_last_imu_ = true;
+
+        if (ins_mode_ == "kalman") {
+            kalman_filter_.predict(imu_meas, dt);
+        }
+    }
+    
+
+    // ----------------------------
+    // GPS (cache) + INS velocity from GPS ALWAYS
+    // ----------------------------
+    if (due_gps) {
+        GpsMeasurement gps_meas{};
+
+        const double vx_global = state_.vx * std::cos(state_.yaw) - state_.vy * std::sin(state_.yaw);
+        const double vy_global = state_.vx * std::sin(state_.yaw) + state_.vy * std::cos(state_.yaw);
+
+        gps_meas.x   = state_.x + P_.get("gps_position_noise") * random_noise_generator_();
+        gps_meas.y   = state_.y + P_.get("gps_position_noise") * random_noise_generator_();
+        gps_meas.vx  = vx_global + P_.get("gps_speed_noise")   * random_noise_generator_();
+        gps_meas.vy  = vy_global + P_.get("gps_speed_noise")   * random_noise_generator_();
+        double yaw = state_.yaw + P_.get("gps_yaw_noise") * random_noise_generator_();
+        unwrap_angle(yaw);
+        gps_meas.yaw = yaw;
+        
+        
+
+        last_gps_ = gps_meas;
+        has_last_gps_ = true;
+
+        ins_data_to_be_published_.vx = gps_meas.vx;
+        ins_data_to_be_published_.vy = gps_meas.vy;
+
+
+	
+        if (ins_mode_ == "kalman") {
+            
+            kalman_filter_.update_gps(gps_meas);
+
+        }
+        
+    }
+
+    // ----------------------------
+    // INS publish tick
+    // ----------------------------
+    if (!due_ins) return;
+
+    
+    	if (!has_last_gps_) {
+           
+          	// jeszcze nie przyszedł żaden GPS
+            ins_data_to_be_published_.vx = 0.0;
+            ins_data_to_be_published_.vy = 0.0;
+        }
+
+
+    if (ins_mode_ == "gauss") {
+        ins_data_to_be_published_.x   = state_.x + P_.get("pose_noise") * random_noise_generator_();
+        ins_data_to_be_published_.y   = state_.y + P_.get("pose_noise") * random_noise_generator_();
+        double yaw = state_.yaw + P_.get("orientation_noise") * random_noise_generator_();
+        unwrap_angle(yaw);
+        ins_data_to_be_published_.yaw = yaw;
+        ins_data_to_be_published_.yaw_rate = state_.yaw_rate +P_.get("rotation_noise") * random_noise_generator_();
+
+    }  else if (ins_mode_ == "kalman") {
+ 
+        ins_data_to_be_published_.x = kalman_filter_.get_state().x;
+        ins_data_to_be_published_.y = kalman_filter_.get_state().y;
+        ins_data_to_be_published_.yaw = kalman_filter_.get_state().yaw;
+        ins_data_to_be_published_.yaw_rate = kalman_filter_.get_state().yaw_rate;
+
+    } 
+
+    if (calibrated) publish_ins_(ins_data_to_be_published_);
     last_ins_data_already_published_ = ins_data_to_be_published_;
-
-    publish_bolid_tf_ins(ins_data_to_be_published_);
-    publish_bolid_tf_true();
+    if (calibrated) publish_bolid_tf_ins(ins_data_to_be_published_);
 }
+
 
 void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_()
 {
@@ -378,28 +529,139 @@ void Simulation_lem_ros_node::publish_ready_camera_frames_from_queue_() {
         timestamp_queue_.pop_front();
     }
 }
-void Simulation_lem_ros_node::update_pid_if_due_()
+
+// sending torque to tractive system if due - dv_board communicates with tractive system at fixed cadence
+void Simulation_lem_ros_node::send_to_ts_if_due()
 {
-    if (torque_mode_ == 0) return;
-    if (step_number_pid_update_period_ <= 0) return;
-    if (!is_due(step_number_, step_number_pid_update_period_, phase_pid_update_)) return;
 
-    double error = target_wheel_speed_ - pid_omega_actual_ * P_.get("R");
+    // 2) TS update only at its cadence
+    if (!is_due(step_number_, step_number_torque_input_sending_, phase_torque_apply_)) {
+        return;
+    }
 
-    pid_prev_I_ += (error + pid_prev_error_) / 2.0 * P_.get("pid_time_step");
+    // msg: move_type: 0 = TORQUE_PERCENTAGE, 1 = SPEED_KMH
+    const bool speed_mode = last_input_read_by_dv_board.move_type;
+    const double Ts = P_.get("simulation_time_step") * step_number_torque_input_sending_;
 
-    double u = P_.get("pid_p") * error +
-               P_.get("pid_i") * pid_prev_I_ +
-               P_.get("pid_d") * (error - pid_prev_error_) / P_.get("pid_time_step");
 
-    pid_prev_error_ = error;
+    if (!speed_mode) {
+        // TORQUE_PERCENTAGE: movement is [%] (expected -100..100)
+        const double torque_percentage = static_cast<double>(last_input_read_by_dv_board.movement);
+        const double speed_current = static_cast<double>(last_input_read_by_dv_board.current_speed);
+        double torque_temp = std::clamp(torque_percentage, -100.0, 100.0);
+        torque_temp = (torque_temp * P_.get("max_torque")) / 100.0;
 
-    u = std::clamp(u, P_.get("pid_min"), P_.get("pid_max"))
-        * P_.get("max_torque") / P_.get("pid_scale");
+        const double wheel_speed_drive_on = speed_current*(1 + P_.get("slip_drive_on"));
+        const double wheel_speed_drive_off = speed_current*(1 + P_.get("slip_drive_off"));
+        const double wheel_speed_brake_on =  speed_current*(1 + P_.get("slip_brake_on"));
+        const double wheel_speed_brake_off =  speed_current*(1 + P_.get("slip_brake_off"));
 
-    torque_command_to_invert_ = u;
+        const double speed_target_drive = speed_current * (1 + P_.get("target_slip_drive"));
+        const double speed_target_brake = speed_current * (1 + P_.get("target_slip_brake"));
+
+
+        //  Sprawdzenie wyłacznie TC
+        // warunek wyłączenia TC dla napędu
+        if( 
+            wheel_speed_read_left < wheel_speed_drive_off &&
+            wheel_speed_read_right < wheel_speed_drive_off )
+        {
+            traction_control_pid_drive_.update(0.0, Ts,false); // teraz wyłączamy TC -> integrator robi leak
+        }
+
+        if( 
+            wheel_speed_read_left  > wheel_speed_brake_off &&
+            wheel_speed_read_right > wheel_speed_brake_off )
+        {
+            traction_control_pid_brake_.update(0.0, Ts,false); // teraz wyłączamy TC -> integrator robi leak
+        }
+
+
+
+        // TRACTION CONTROL - DRIVE
+
+        if( torque_temp > 0 ) // tylko przy dodatnim momencie
+        {
+
+            const double error =  (std::max(wheel_speed_read_left, wheel_speed_read_right) - speed_target_drive) / std::max( speed_current , 2.0) ;
+            // warunek włączenia TC dla napędu
+
+            if(traction_control_pid_drive_.is_active())
+            {
+                traction_control_pid_drive_.update(error, Ts,true);
+                const double tc_output = traction_control_pid_drive_.get_output();
+               torque_temp = std::max(0.0,std::min(torque_temp, 2*tc_output));
+            }
+
+            else if( wheel_speed_read_left  > wheel_speed_drive_on || wheel_speed_read_right > wheel_speed_drive_on )
+            {
+                
+                traction_control_pid_drive_.update(error, Ts,true);
+                const double tc_output = traction_control_pid_drive_.get_output();
+                torque_temp = std::max(0.0,std::min(torque_temp, 2*tc_output));
+            }
+            // jeśli włączony to aktualizuj PID 
+            
+        }
+        
+        // TRACTION CONTROL - BRAKE 
+        if( torque_temp < 0 ) // tylko przy ujemnym momencie
+        {
+            const double error =  (std::min(wheel_speed_read_left, wheel_speed_read_right) - speed_target_brake)/std::max( speed_current , 2.0) ;
+            // warunek włączenia TC dla hamowania
+             // jeśli włączony to aktualizuj PID 
+             if(traction_control_pid_brake_.is_active())
+             {
+                 traction_control_pid_brake_.update(error, Ts,true);
+                 const double tc_output = traction_control_pid_brake_.get_output();
+                 torque_temp = std::min(0.0,std::max(torque_temp, 2*tc_output));
+             }
+
+            
+            else if( wheel_speed_read_left  < wheel_speed_brake_on || wheel_speed_read_right < wheel_speed_brake_on )
+            {
+                
+                traction_control_pid_brake_.update(error, Ts,true);
+                const double tc_output = traction_control_pid_brake_.get_output();
+                torque_temp = std::min(0.0,std::max(torque_temp, 2*tc_output));
+            }
+           
+        }
+
+         // =========================================================
+        // TC active time accounting (NEW)
+        // =========================================================
+        const bool tc_active_now =
+            traction_control_pid_drive_.is_active() ||
+            traction_control_pid_brake_.is_active();
+
+        if (tc_active_now) {
+            time_tc_active_ += Ts;  // [s] czas aktywnego TC
+        }
+
+        torque_command_to_invert_ = torque_temp;
+        return;
+     
+    }
+    // SPEED_KMH: movement in km/h
+    // trapezoidal I
+    double error = static_cast<double>(last_input_read_by_dv_board.movement) - (wheel_speed_read_right + wheel_speed_read_left)/2 ;
+    prev_I_speed_pid += (error + prev_error_speed_pid) * 0.5 * Ts;
+
+    double u_pid =
+        P_.get("pid_speed_p") * error +
+        P_.get("pid_speed_i") * prev_I_speed_pid +
+        P_.get("pid_speed_d") * (error - prev_error_speed_pid) / Ts;
+
+    prev_error_speed_pid = error;
+
+    u_pid = std::clamp(u_pid, P_.get("pid_speed_min"), P_.get("pid_speed_max"));
+
+    // PID output -> torque
+    torque_command_to_invert_ = (u_pid * P_.get("max_torque")) / P_.get("pid_speed_scale");
+
+    return;
 }
-
 
 double Simulation_lem_ros_node::random_noise_generator_() const {
     static thread_local std::mt19937 rng{std::random_device{}()};
@@ -426,6 +688,8 @@ void Simulation_lem_ros_node::publish_ins_(const INS_data& ins){
     odom_msg.twist.twist.linear.x  = ins.vx;
     odom_msg.twist.twist.linear.y  = ins.vy;
     odom_msg.twist.twist.angular.z = ins.yaw_rate;
+
+   
 
     pub_ins_.publish(odom_msg);
 }
@@ -578,71 +842,7 @@ void Simulation_lem_ros_node::publish_bolid_tf_ins(const INS_data& ins){
     tf_br_.sendTransform(tf_ins);
 }
 
-// ====== Logger równoległy ======
-void Simulation_lem_ros_node::start_logging_thread_() {
-    if (!logging_enabled_) return;
-    logging_thread_running_ = true;
-    log_file_.rdbuf()->pubsetbuf(nullptr, 1 << 20);
-    log_thread_ = std::thread([this]() {
-        std::string batch;
-        batch.reserve(1 << 18);
-        while (logging_thread_running_) {
-            {
-                std::unique_lock<std::mutex> lock(log_mutex_);
-                log_cv_.wait_for(lock, std::chrono::milliseconds(50),
-                                 [this]() { return !log_queue_.empty() || !logging_thread_running_; });
-                while (!log_queue_.empty()) {
-                    batch += std::move(log_queue_.front());
-                    log_queue_.pop();
-                }
-            }
-            if (!batch.empty()) {
-                log_file_ << batch;
-                batch.clear();
-            }
-        }
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        while (!log_queue_.empty()) {
-            log_file_ << std::move(log_queue_.front());
-            log_queue_.pop();
-        }
-        log_file_.flush();
-    });
-}
 
-void Simulation_lem_ros_node::stop_logging_thread_() {
-    if (!logging_enabled_) return;
-    logging_thread_running_ = false;
-    log_cv_.notify_all();
-    if (log_thread_.joinable()) log_thread_.join();
-}
-
-void Simulation_lem_ros_node::log_state_() {
-    std::ostringstream oss;
-    oss.precision(5);
-    oss.setf(std::ios::fixed);
-    const float t = static_cast<float>(step_number_ * P_.get("simulation_time_step"));
-    oss << t << ","
-        << static_cast<float>(state_.x) << ","
-        << static_cast<float>(state_.y) << ","
-        << static_cast<float>(state_.yaw) << ","
-        << static_cast<float>(state_.vx) << ","
-        << static_cast<float>(state_.vy) << ","
-        << static_cast<float>(state_.yaw_rate) << ","
-        << static_cast<float>(state_.torque) << ","
-        << static_cast<float>(state_.rack_angle * M_PI / 180.0f) << ","
-        << static_cast<float>(state_.omega_rr) << ","
-        << static_cast<float>(state_.omega_rl) << ","
-        << static_cast<float>(torque_command_) << ","
-        << static_cast<float>(steer_command_ * M_PI / 180.0f) << ","
-        << static_cast<float>(state_.prev_ay / 9.81f) << ","
-        << static_cast<float>(state_.prev_ax / 9.81f) << "\n";
-    {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        log_queue_.push(oss.str());
-    }
-    log_cv_.notify_one();
-}
 
 void Simulation_lem_ros_node::publish_cones_gt_markers_()
 {
@@ -695,7 +895,7 @@ void Simulation_lem_ros_node::publish_cones_gt_markers_()
 
 void Simulation_lem_ros_node::pub_full_state_(){
     dv_interfaces::full_state msg;
-    Log_Info_full info = log_info_full(state_, Input(torque_command_to_invert_, steer_command_), P_, step_number_);
+    Log_Info_full info = log_info_full(state_, Input(torque_command_to_invert_, steer_command_to_maxon), P_, step_number_);
 
     msg.time = info.time;
     msg.step_number = step_number_;
@@ -754,6 +954,17 @@ void Simulation_lem_ros_node::pub_full_state_(){
 
     msg.step_dt = P_.get("simulation_time_step");
 
+    const double kappa_max_abs_signed =
+    (std::abs(msg.kappa_rr) > std::abs(msg.kappa_rl)) ? msg.kappa_rr : msg.kappa_rl;
+
+    update_top_abs(ten_biggest_slip_ratio_, kappa_max_abs_signed, 10);
+    update_top_abs(ten_biggest_beta_angle_, msg.slip_angle_body, 10);
+
+    const double beta_thresh = 9.0 ;
+    if (std::abs(msg.slip_angle_body) > beta_thresh) {
+        time_beta_over_9_ += msg.step_dt;
+    }
+
     pub_log_full_.publish(msg);
 
 } 
@@ -792,6 +1003,84 @@ void Simulation_lem_ros_node::publish_bolid_marker_()
     car.lifetime = ros::Duration(0.1);
 
     pub_marker_bolid_.publish(car);
+}
+
+
+
+void Simulation_lem_ros_node::log_metric_of_ride_data_()
+{
+    // Jeśli nie ma ścieżki, to nic nie zapisuję
+    if (metrics_log_file_path_.empty()) return;
+
+    std::ofstream f(metrics_log_file_path_, std::ios::out);
+    if (!f.is_open())
+    {
+        ROS_WARN_STREAM("[METRICS] Cannot open metrics file: " << metrics_log_file_path_);
+        return;
+    }
+
+    const double dt = P_.get("simulation_time_step");
+    const double total_time = static_cast<double>(step_number_) * dt;
+
+    // policz procent czasu TC aktywne dopiero na końcu
+    if (total_time > 1e-9)
+        percetage_of_time_tc_active_ = 100.0 * time_tc_active_ / total_time;
+    else
+        percetage_of_time_tc_active_ = 0.0;
+
+    if (total_time > 1e-9)
+        percetage_of_time_beta_over_9_ = 100.0 * time_beta_over_9_ / total_time;
+    else
+        percetage_of_time_beta_over_9_ = 0.0;
+
+    // helper do wektorów -> "a;b;c;d"
+    auto join_vec = [](const std::vector<double>& v) -> std::string
+    {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(6);
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            if (i) oss << ";";
+            oss << v[i];
+        }
+        return oss.str();
+    };
+
+    // CSV: proste "metric,value" - łatwe do parsowania i czytania
+    f << "metric,value\n";
+
+    f << "total_time_s," << total_time << "\n";
+    f << "ey_avg_m,"      << ey_avg_   << "\n";
+    f << "epsi_avg_rad,"  << epsi_avg_ << "\n";
+    f << "vs_avg_mps,"    << vs_avg_   << "\n";
+
+    f << "time_tc_active_s," << time_tc_active_ << "\n";
+    f << "tc_active_percent," << percetage_of_time_tc_active_ << "\n";
+    f << "time_beta_over_9deg_s," << time_beta_over_9_ << "\n";
+    f << "beta_over_9deg_percent," << percetage_of_time_beta_over_9_ << "\n";
+
+    // Top 10 listy jako jedna komórka (bezpieczne i wygodne)
+    f << "ten_biggest_slip_ratio," << "\"" << join_vec(ten_biggest_slip_ratio_) << "\"\n";
+    f << "ten_biggest_beta_angle," << "\"" << join_vec(ten_biggest_beta_angle_) << "\"\n";
+    f << "ten_biggest_ey,"         << "\"" << join_vec(ten_biggest_ey_) << "\"\n";
+    f << "ten_biggest_epsi,"       << "\"" << join_vec(ten_biggest_epsi_) << "\"\n";
+
+    f.flush();
+    f.close();
+
+    ROS_WARN_STREAM("[METRICS] Saved ride metrics to: " << metrics_log_file_path_);
+}
+
+void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug::ConstPtr& msg)
+{
+    // Avg (z kontrolera)
+    epsi_avg_ = msg->epsi_avg;
+    ey_avg_   = msg->ey_avg;
+    vs_avg_   = msg->v_s_avg;   // albo msg->v_ref jeśli chcesz referencję
+
+    // Current -> top10 (po module)
+    update_top_abs(ten_biggest_ey_,   std::abs(msg->ey_current));
+    update_top_abs(ten_biggest_epsi_, std::abs(msg->epsi_current));
 }
 
 }// namespace lem_dynamics_sim_

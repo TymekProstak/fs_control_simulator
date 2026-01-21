@@ -124,7 +124,7 @@ namespace lem_dynamics_sim_{
         info.slip_angle_rr = slip_angle_rr * 180 / M_PI ;
      
 
-        info.slip_angle_body = std::atan2(x.vy, x.vx) * 180 / M_PI ;
+        info.slip_angle_body = std::atan2(x.vy, std::max(x.vx,1.0)) * 180 / M_PI ;
 
         info.fz_fl = 0.5 * mf * g - 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl1") * x.vx * x.vx ;
         info.fz_fr =   0.5 * mf * g  - 0.5 * m * x.prev_ax * h/w  + x.prev_ay /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl1") * x.vx * x.vx ;
@@ -177,13 +177,9 @@ namespace lem_dynamics_sim_{
 }
 
     void euler_sim_timestep(State& x, const Input& u, const ParamBank& P){
-        double dt = P.get("simulation_time_step");
-        State dx = model_derative(P,x,u);
-        x += dx * dt;
-        unwrap_angle(x.yaw);
 
-
-        // === limits for power and steer (rear wheels) ===
+        Input u_limited = u;
+        // power limiter 
 
         // stałe z parametrów
         const double T_min   = P.get("min_torque");    // np. -200
@@ -193,50 +189,29 @@ namespace lem_dynamics_sim_{
 
         // bezpieczne prędkości kół (żeby nie dzielić przez 0)
         const double omega_eps = 15.0;   // rad/s ~ 3 m/s dla R≈0.195..0.2 – dobierz pod siebie
-
-        double omega_rl_safe = std::copysign(std::max(std::abs(x.omega_rl), omega_eps), x.omega_rl);
-        double omega_rr_safe = std::copysign(std::max(std::abs(x.omega_rr), omega_eps), x.omega_rr);
+        double omega_rl_safe = std::max(std::abs(x.omega_rl), omega_eps);
+        double omega_rr_safe = std::max(std::abs(x.omega_rr), omega_eps);
         double omega_sum     = std::abs(x.omega_rl) + std::abs(x.omega_rr);
         double omega_sum_safe = std::max(omega_sum, 2.0*omega_eps);   // obie prawie stoją → użyj 2*eps
 
-        // ---- LEFT WHEEL ----
-        // limit momentowy (twardy)
-        double T_left_min_mom = T_min * 0.5;
-        double T_left_max_mom = T_max * 0.5;
+      
 
-        // limit mocowy
-        double T_left_min_pow = - std::abs(P_rec) / omega_rl_safe / 2.0;  // rekuperacja (ujemny)
-        double T_left_max_pow =   std::abs(P_drv) / omega_rl_safe / 2.0;  // napęd (dodatni)
-
-        // finalne limity = "bardziej restrykcyjne"
-        double T_left_min = std::min(T_left_min_mom, T_left_min_pow);
-        double T_left_max = std::max(T_left_max_mom, T_left_max_pow);
-
-        x.torque_left = std::clamp(x.torque_left, T_left_min, T_left_max);
-
-        // ---- RIGHT WHEEL ----
-        double T_right_min_mom = T_min * 0.5;
-        double T_right_max_mom = T_max * 0.5;
-
-        double T_right_min_pow = - std::abs(P_rec) / omega_rr_safe / 2.0;
-        double T_right_max_pow =   std::abs(P_drv) / omega_rr_safe / 2.0;
-
-        double T_right_min = std::min(T_right_min_mom, T_right_min_pow);
-        double T_right_max = std::max(T_right_max_mom, T_right_max_pow);
-
-        x.torque_right = std::clamp(x.torque_right, T_right_min, T_right_max);
-
-        // ---- TOTAL TORQUE (jeśli używasz x.torque jako "sumy") ----
-        double T_tot_min_mom = T_min;
-        double T_tot_max_mom = T_max;
 
         double T_tot_min_pow = - std::abs(P_rec) / omega_sum_safe;  // cała oś
         double T_tot_max_pow =   std::abs(P_drv) / omega_sum_safe;
 
-        double T_tot_min = std::min(T_tot_min_mom, T_tot_min_pow);
-        double T_tot_max = std::max(T_tot_max_mom, T_tot_max_pow);
+        double T_tot_min = std::max(-std::abs(T_min), T_tot_min_pow);
+        double T_tot_max = std::min(T_max, T_tot_max_pow);
 
-        x.torque = std::clamp(x.torque, T_tot_min, T_tot_max);
+
+        u_limited.torque_request = std::clamp(u.torque_request, T_tot_min, T_tot_max);
+
+        
+        double dt = P.get("simulation_time_step");
+        State dx = model_derative(P,x,u_limited);
+        x += dx * dt;
+        unwrap_angle(x.yaw);
+        // rack angle limiter 
 
         if(x.rack_angle >= P.get("max_steer")){
             x.d_delta_left = std::min(0.0,x.d_delta_left);
@@ -260,5 +235,6 @@ namespace lem_dynamics_sim_{
     //     x += (dt/6) * (k1 + 2*k2 + 2*k3 + k4);
     //     unwrap_angle(x.yaw);
     // }
+
 
 }

@@ -145,7 +145,7 @@ namespace lem_dynamics_sim_{
         info.slip_angle_rr = slip_angle_rr * 180 / M_PI ;
      
 
-        info.slip_angle_body = std::atan2(x.vy, x.vx) * 180 / M_PI ;
+        info.slip_angle_body = std::atan2(x.vy, std::max(x.vx,1.0)) * 180 / M_PI ;
 
         info.fz_fl = 0.5 * mf * g - 0.5 * m * x.prev_ax * h/w  - x.prev_ay/t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl1") * x.vx * x.vx ;
         info.fz_fr =   0.5 * mf * g  - 0.5 * m * x.prev_ax * h/w  + x.prev_ay /t_front * ( mf * h_roll_f + Kf/K_total *(mf * h_prim_f + mr * h_prim_r)) + 1.0/2 * P.get("Cl1") * x.vx * x.vx ;

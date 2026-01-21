@@ -3,6 +3,8 @@
 #include "double_track.hpp"
 #include "cone_detector.hpp"
 #include "cone_track.hpp"
+#include "pid.hpp"
+#include "kalman.hpp"
 
 #include <ros/ros.h>
 #include <ros/package.h>
@@ -22,16 +24,12 @@
 #include "dv_interfaces/Cones.h"
 #include "dv_interfaces/full_state.h"
 
+
 #include <string>
 #include <deque>
 #include <optional>
 #include <fstream>
 #include <sstream>
-#include <mutex>
-#include <thread>
-#include <queue>
-#include <atomic>
-#include <condition_variable>
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -39,13 +37,12 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <tf2_ros/transform_broadcaster.h>
-
+#include <dv_interfaces/MPCDebug.h>
 //// ===========================================================================
 ///  Symulator LEM Dynamics + ROS
 ///  - obsługa wejść sterujących
 ///  - kroki symulacji i publikacje danych
 ///  - modelowanie opóźnień czujników (kamera / INS / enkoder)
-///  - asynchroniczny logger (nie blokuje pętli fizyki)
 //// ===========================================================================
 
 namespace lem_dynamics_sim_ {
@@ -139,11 +136,6 @@ struct INS_data {
     double yaw_rate{};
 };
 
-struct DV_control_input {
-    double torque{};
-    double steer{};
-    int torque_mode{}; // 0 - torque , 1 - speed
-};
 
 //// ===========================================================================
 //  Klasa główna symulatora ROS
@@ -156,7 +148,9 @@ int phase_wheel_encoder_reading_ = 0;
 int phase_ins_reading_           = 0;
 int phase_torque_apply_          = 0;
 int phase_steer_apply_           = 0;
-int phase_pid_update_            = 0;
+int phase_gps_speed_reading_    = 0;
+int phase_control_input_read_    = 0;
+// int phase_pid_update_            = 0; nie używany bo PID liczony przy wysyłaniu momentu
 
 // RNG do losowania faz (stałe na start symulacji)
 std::mt19937 phase_rng_{std::random_device{}()};
@@ -185,20 +179,25 @@ public:
     void dv_control_callback(const dv_interfaces::Control::ConstPtr& msg);
 private:
     //// =======================================================================
-    //  Logowanie równoległe (asynchroniczne)
+    //  Logowanie danych do csv nt metryk jazdy
     //// =======================================================================
-    std::ofstream log_file_;
-    bool logging_enabled_ = false;
-    // kolejka i wątek loggera
-    std::queue<std::string> log_queue_;
-    std::mutex log_mutex_;
-    std::condition_variable log_cv_;
-    std::thread log_thread_;
-    std::atomic<bool> logging_thread_running_{false};
+    std::string metrics_log_file_path_;
+    void log_metric_of_ride_data_();
+    double ey_avg_; // average lateral error along the track
+    double epsi_avg_; // average heading error along the track
+    double vs_avg_;  // average speed along the track
+    std::vector<double> ten_biggest_slip_ratio_;
+    std::vector<double> ten_biggest_beta_angle_;
+    std::vector<double> ten_biggest_ey_;
+    std::vector<double> ten_biggest_epsi_;
+    double percetage_of_time_beta_over_9_;
+    double percetage_of_time_tc_active_;
+    double time_tc_active_ = 0.0;
+    double time_beta_over_9_ = 0.0;
 
-    void start_logging_thread_();
-    void stop_logging_thread_();
-    void log_state_(); // wrzuca do kolejki
+    ros::Subscriber sub_mpc_debug_;
+
+    void mpc_debug_callback_(const dv_interfaces::MPCDebug::ConstPtr& msg);
 
     //// =======================================================================
     //  ROS
@@ -221,20 +220,23 @@ private:
     State     state_;
     Track     track_global_;
 
-    double pid_prev_I_          = 0.0;
-    double pid_prev_error_      = 0.0;
-    double target_wheel_speed_  = 0.0;
-    double pid_speed_out_       = 0.0;
-    double pid_omega_actual_    = 0.0;
-    double torque_command_      = 0.0;
-    double torque_command_to_invert_ = 0.0;
-    double steer_command_       = 0.0;
-    double target_wheel_speed_request = 0.0;
+    PIDController traction_control_pid_drive_;
+    PIDController traction_control_pid_brake_;
 
-    int torque_mode_ = 0; // 0 - torque, 1 - speed
-    DV_control_input last_input_requested_{};
 
-    //// =======================================================================
+    double wheel_speed_read_right = 0.0; // ostatnia odczytana prędkość z enkodera kół na prawym kole (w m/s)
+    double wheel_speed_read_left = 0.0; // ostatnia odczytana prędkość z enkodera kół na prawym kole (w m/s)
+
+    double prev_I_speed_pid = 0.0; // poprzednia wartość całki w PID prędkości
+    double prev_error_speed_pid = 0.0; // poprzedni błąd w PID prędkości
+
+    double torque_command_to_invert_ = 0.0; // actual torque sent to tractive system
+    double steer_command_to_maxon = 0.0; // actual steer sent to steering actuator
+
+    dv_interfaces::Control last_input_cached; // last input on control topic, cached for dv board reading
+    dv_interfaces::Control  last_input_read_by_dv_board; // last input read by dv board (at fixed cadence)
+
+     //// =======================================================================
     //  INS, kolejki kamer, dane
     //// =======================================================================
     Track    track_to_be_published_;
@@ -246,10 +248,30 @@ private:
     int step_of_camera_shoot_          = 0;
     int step_of_wheel_encoder_reading_ = 0;
     int step_of_ins_reading_           = 0;
-    int step_of_torque_input_application_ = 0;
-    int step_of_steer_input_application_  = 0;
-    int step_number_pid_update_period_    = 0;
+    int step_gps_speed_reading_        = 0;
+    // DV_BOARD_READ cadence (board czyta wejście z ROS)
+    int step_of_control_input_read_ = 0;
+
+    // board -> steering actuator cadence (board wysyła steering)
+    int step_of_steer_input_sending_ = 0;
+
+    // board -> tractive system cadence (board wysyła torque) + na tym samym ticku liczę PID
+    int step_number_torque_input_sending_ = 0;
+    int step_imu_reading_           = 0;
+    
     int last_frame_size_ = 0;
+
+
+    GpsMeasurement last_gps_{};
+    bool has_last_gps_ = false;
+    ImuMeasurement last_imu_{}; 
+    bool has_last_imu_ = false;
+    double sim_b_g  = 0.0; // gyro bias
+    double sim_b_ax = 0.0; // acc x bias
+    double sim_b_ay = 0.0; // acc y bias
+    std::string ins_mode_ = "gauss"; // "gauss" or "kalman" -> tryb ins
+    int sim_time = -1; // domyślnie nieskończony czas symulacji
+    KalmanFilter kalman_filter_;
 
     
 
@@ -263,19 +285,33 @@ private:
     //// =======================================================================
     //  Pomocnicze funkcje symulacyjne
     //// =======================================================================
+
+    // helpers do losowania opóźnień
     double random_noise_generator_() const;
+    void compute_step_intervals_from_params_();
+    double sample_vision_exec_time_() const;
+
+    // publisery rosowe do wizualizacji i danych
     void publish_ins_(const INS_data& ins);
     void publish_cones_(const Track& cones, ros::Time timestamp);
     void publish_cones_vision_markers_(const Track& det, const ros::Time& acquisition_stamp);
     void publish_cones_gt_markers_();
-    void compute_step_intervals_from_params_();
+    void publish_ready_camera_frames_from_queue_();
+
+    // czytanie wejść z kontroli i z czujników
     void read_wheel_encoder_if_due_();
     void read_ins_if_due_();
+    void read_control_by_dv_board_if_due();
+    void read_steer_by_orin_if_due_();
+
+    // aplikacja z dv_board do aktuatorów i obrót wizji 
     void shoot_camera_or_enqueue_if_due_();
-    void publish_ready_camera_frames_from_queue_();
-    void update_pid_if_due_();
-    void apply_delayed_inputs_if_due_();
-    double sample_vision_exec_time_() const;
+    void send_to_ts_if_due();
+
+    // Kompatybilność: w step() jest wywołanie send_steer_to_maxon_if_due_() -> dlatego że obecnie od razu jak orin czyta to wysła do
+    inline void send_steer_to_maxon_if_due_() { read_steer_by_orin_if_due_(); }
+
+    // publikacja TF i markerów bolidu
     void publish_bolid_tf_ins(const INS_data& ins);
     void publish_bolid_tf_true();
     void pub_full_state_();

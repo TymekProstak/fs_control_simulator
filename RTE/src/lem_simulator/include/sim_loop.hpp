@@ -165,6 +165,7 @@ int phase_ins_reading_           = 0;
 int phase_torque_apply_          = 0;
 int phase_steer_apply_           = 0;
 int phase_pid_update_            = 0;
+int phase_gps_speed_reading_    = 0;
 
 // RNG do losowania faz (stałe na start symulacji)
 std::mt19937 phase_rng_{std::random_device{}()};
@@ -248,7 +249,11 @@ private:
     double torque_command_recived_by_dv_board_rl_ = 0.0;
     double torque_command_recived_by_dv_board_rr_ = 0.0;
 
-    double steer_command_       = 0.0;
+
+    // last steer command recived by dv board
+    double steer_command_recived_by_dv_board       = 0.0;
+    // steer command to be applied
+    double steer_command_request       = 0.0;
     double target_wheel_speed_request = 0.0;
 
     int torque_mode_ = 0; // 0 - torque, 1 - speed
@@ -266,9 +271,16 @@ private:
     int step_of_camera_shoot_          = 0;
     int step_of_wheel_encoder_reading_ = 0;
     int step_of_ins_reading_           = 0;
-    int step_of_torque_input_application_ = 0;
-    int step_of_steer_input_application_  = 0;
-    int step_number_pid_update_period_    = 0;
+    int step_gps_speed_reading_        = 0;
+    // DV_BOARD_READ cadence (board czyta wejście z ROS)
+    int step_of_control_input_read_ = 0;
+
+    // board -> steering actuator cadence (board wysyła steering)
+    int step_of_steer_input_sending_ = 0;
+
+    // board -> tractive system cadence (board wysyła torque) + na tym samym ticku liczę PID
+    int step_number_torque_input_sending_ = 0;
+    
     int last_frame_size_ = 0;
 
     

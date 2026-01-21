@@ -106,6 +106,7 @@ inline ParamBank build_param_bank(const nlohmann::json& J) {
   P.add("using_stanley",JgetReq(J,"general.using_stanley"));
   P.add("using_pure_pursuit", JgetReq(J,"general.using_pure_pursuit"));
   P.add("min_path_length_for_geo", JgetReq(J,"general.min_path_length_for_geo"));
+ 
   //// --- MPC Parameters ---
   P.add("mpc_max_delta", JgetReq(J, "mpc.bounds.max_delta"));
   P.add("mpc_min_delta", JgetReq(J, "mpc.bounds.min_delta"));
@@ -142,6 +143,9 @@ inline ParamBank build_param_bank(const nlohmann::json& J) {
   P.add("vel_planner_v_max", JgetReq(J, "velocity_planner.v_max"));
   P.add("vel_planner_max_corrnering_accel", JgetReq(J, "velocity_planner.max_corrnering_accel"));
   P.add("vel_planner_saftey_factor", JgetReq(J, "velocity_planner.saftey_factor"));
+  P.add("vel_planner_max_jerk", JgetReq(J, "velocity_planner.max jerk"));
+  P.add("vel_planner_spatial_step", JgetReq(J, "velocity_planner.spatial_step"));
+  P.add("vel_planner_number_of_jerk_merging_iterations", JgetReq(J, "velocity_planner.number_of_jerk_merging_iterations"));
   return P;
 }
 

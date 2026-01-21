@@ -103,7 +103,7 @@ namespace lem_dynamics_sim_{
     State model_derative(const ParamBank& P, const  State& x, const Input& u);
     Log_Info_full log_info_full(const State& x, const Input& u, const ParamBank& P , int step_number);
     void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P);
-    void euler_sim_timestep(State& x, const Input& u, const ParamBank& P);
+    void euler_sim_timestep(State& x, const  Input& u, const ParamBank& P);
 
 
 } // namesapce lem_dynamis_sim_

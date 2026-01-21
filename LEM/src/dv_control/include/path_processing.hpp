@@ -14,26 +14,30 @@
 
 namespace v2_control {
 
+// =====================================================
+// Basic structs
+// =====================================================
 struct PathProcessResult
 {
     int N = 0;
     Eigen::VectorXd X_ref;
     Eigen::VectorXd Y_ref;
     Eigen::VectorXd curvature;
+
     bool valid = false;
     bool curv_eligible = false;
     bool geo_eligible = false;
     bool mpc_eligible = false;
     bool all_path_eligible = false;
+
     Eigen::VectorXd acceleration_ref;
     Eigen::VectorXd velocity_ref;
 
-    // yaw ścieżki na początku horyzontu (w MAP)
     double yaw0 = 0.0;
 };
 
 // =====================================================
-// Helper: bezpieczny yaw z dwóch punktów
+// Helpers
 // =====================================================
 static inline double yawFrom2Pts(double x0, double y0, double x1, double y1)
 {
@@ -44,16 +48,14 @@ static inline double yawFrom2Pts(double x0, double y0, double x1, double y1)
     return std::atan2(dy, dx);
 }
 
-// =====================================================
-// Helper: rzut punktu na segment
-// =====================================================
+
+
 inline Vec2 projectPointOnSegment(const Vec2& A, const Vec2& B, const Vec2& P)
 {
     Vec2 AB = B - A;
-    double len2 = AB.x * AB.x + AB.y * AB.y;
+    const double len2 = AB.x * AB.x + AB.y * AB.y;
 
-    if (len2 < 1e-12)
-        return A;
+    if (len2 < 1e-12) return A;
 
     double t = ((P.x - A.x) * AB.x + (P.y - A.y) * AB.y) / len2;
     t = std::clamp(t, 0.0, 1.0);
@@ -61,9 +63,6 @@ inline Vec2 projectPointOnSegment(const Vec2& A, const Vec2& B, const Vec2& P)
     return Vec2(A.x + t * AB.x, A.y + t * AB.y);
 }
 
-// =====================================================
-// Wyniki "za krótka ścieżka"
-// =====================================================
 inline PathProcessResult makeGeoInvalidResult(const Eigen::VectorXd& X,
                                              const Eigen::VectorXd& Y)
 {
@@ -110,67 +109,54 @@ inline PathProcessResult makeCurvInvalidResult(const Eigen::VectorXd& X,
     return r;
 }
 
-// =====================================================
-// Buduję Vec2 z X/Y
-// =====================================================
 inline std::vector<Vec2> buildPathBase(const Eigen::VectorXd& X,
-                                      const Eigen::VectorXd& Y)
+                                       const Eigen::VectorXd& Y)
 {
     const int N = static_cast<int>(X.size());
     std::vector<Vec2> path;
     path.reserve(N);
-    for (int i = 0; i < N; ++i) {
-        path.emplace_back(X(i), Y(i));
-    }
+    for (int i = 0; i < N; ++i) path.emplace_back(X(i), Y(i));
     return path;
 }
 
-// =====================================================
-// Krzywizna z 3 punktów (fallback / debug)
-// =====================================================
 inline Eigen::VectorXd computeCurvature(const std::vector<Vec2>& path)
 {
     const int K = static_cast<int>(path.size());
     Eigen::VectorXd kappa = Eigen::VectorXd::Zero(K);
 
-    if (K < 3)
-        return kappa;
+    if (K < 3) return kappa;
 
     for (int i = 1; i < K - 1; ++i) {
-        double x0 = path[i - 1].x;
-        double y0 = path[i - 1].y;
-        double x1 = path[i].x;
-        double y1 = path[i].y;
-        double x2 = path[i + 1].x;
-        double y2 = path[i + 1].y;
+        const double x0 = path[i - 1].x;
+        const double y0 = path[i - 1].y;
+        const double x1 = path[i].x;
+        const double y1 = path[i].y;
+        const double x2 = path[i + 1].x;
+        const double y2 = path[i + 1].y;
 
-        double vx1 = x1 - x0;
-        double vy1 = y1 - y0;
-        double vx2 = x2 - x1;
-        double vy2 = y2 - y1;
+        const double vx1 = x1 - x0;
+        const double vy1 = y1 - y0;
+        const double vx2 = x2 - x1;
+        const double vy2 = y2 - y1;
 
-        double a = std::hypot(vx1, vy1);
-        double b = std::hypot(vx2, vy2);
-        double c = std::hypot(x2 - x0, y2 - y0);
+        const double a = std::hypot(vx1, vy1);
+        const double b = std::hypot(vx2, vy2);
+        const double c = std::hypot(x2 - x0, y2 - y0);
 
-        double cross = vx1 * vy2 - vy1 * vx2;
-        double denom = a * b * c;
+        const double cross = vx1 * vy2 - vy1 * vx2;
+        const double denom = a * b * c;
 
         kappa(i) = (denom > 1e-9) ? 2.0 * cross / denom : 0.0;
     }
 
     kappa(0)     = kappa(1);
     kappa(K - 1) = kappa(K - 2);
-
     return kappa;
 }
 
-// =====================================================
-// gęste punkty po SPLAJNIE: próbkowanie eval(s) co ds
-// =====================================================
 inline std::vector<Vec2> sampleSplineByS(const TrackSpline2D& sp,
-                                        double ds,
-                                        size_t max_points = 0)
+                                         double ds,
+                                         size_t max_points = 0)
 {
     std::vector<Vec2> out;
     if (!sp.valid() || ds <= 1e-9) return out;
@@ -184,32 +170,32 @@ inline std::vector<Vec2> sampleSplineByS(const TrackSpline2D& sp,
     out.reserve(N + 2);
 
     for (size_t i = 0; i < N; ++i) {
-        double s = std::min(L, (double)i * ds);
+        const double s = std::min(L, (double)i * ds);
         out.push_back(sp.eval(s));
     }
 
     if (!sp.isClosed()) {
+        const Vec2 endp = sp.eval(L);
         if (out.empty() ||
-            std::hypot(out.back().x - sp.eval(L).x, out.back().y - sp.eval(L).y) > 1e-6)
+            std::hypot(out.back().x - endp.x, out.back().y - endp.y) > 1e-6)
         {
-            if (max_points == 0 || out.size() < max_points)
-                out.push_back(sp.eval(L));
+            if (max_points == 0 || out.size() < max_points) out.push_back(endp);
         }
     }
     return out;
 }
 
 // =====================================================
-// Projekcja bolidu na polyline (segmenty)
+// Projection on polyline (existing path-process logic)
 // =====================================================
 struct ProjectionInfo {
-    int index = 0; // i = punkt "B" segmentu [i-1, i]
+    int index = 0;
     Vec2 point;
 };
 
 inline ProjectionInfo findProjectionOnPath(const std::vector<Vec2>& path,
-                                          const Vec2& Pbol,
-                                          int maxSegmentsToSearch)
+                                           const Vec2& Pbol,
+                                           int maxSegmentsToSearch)
 {
     ProjectionInfo info;
 
@@ -219,32 +205,35 @@ inline ProjectionInfo findProjectionOnPath(const std::vector<Vec2>& path,
         return info;
     }
 
-    Vec2 A0 = path[0];
-    Vec2 B0 = path[1];
-    Vec2 AB0 = B0 - A0;
-    double len2_0 = AB0.x * AB0.x + AB0.y * AB0.y;
+    // if behind first segment start -> return projection on infinite extension (as you had)
+    {
+        const Vec2 A0 = path[0];
+        const Vec2 B0 = path[1];
+        const Vec2 AB0 = B0 - A0;
+        const double len2_0 = AB0.x * AB0.x + AB0.y * AB0.y;
 
-    if (len2_0 >= 1e-6) {
-        double t0 = ((Pbol.x - A0.x) * AB0.x + (Pbol.y - A0.y) * AB0.y) / len2_0;
-        if (t0 < 0.0) {
-            info.point = Vec2(A0.x + t0 * AB0.x, A0.y + t0 * AB0.y);
-            info.index = 0;
-            return info;
+        if (len2_0 >= 1e-6) {
+            const double t0 = ((Pbol.x - A0.x) * AB0.x + (Pbol.y - A0.y) * AB0.y) / len2_0;
+            if (t0 < 0.0) {
+                info.point = Vec2(A0.x + t0 * AB0.x, A0.y + t0 * AB0.y);
+                info.index = 0;
+                return info;
+            }
         }
     }
 
     const int N = static_cast<int>(path.size());
-    int search_limit = std::min(N - 1, maxSegmentsToSearch);
+    const int search_limit = std::min(N - 1, maxSegmentsToSearch);
 
     double best_d2 = 1e30;
     for (int i = 1; i <= search_limit; ++i) {
-        Vec2 A = path[i - 1];
-        Vec2 B = path[i];
-        Vec2 Pp = projectPointOnSegment(A, B, Pbol);
+        const Vec2 A = path[i - 1];
+        const Vec2 B = path[i];
+        const Vec2 Pp = projectPointOnSegment(A, B, Pbol);
 
-        double dx = Pp.x - Pbol.x;
-        double dy = Pp.y - Pbol.y;
-        double d2 = dx * dx + dy * dy;
+        const double dx = Pp.x - Pbol.x;
+        const double dy = Pp.y - Pbol.y;
+        const double d2 = dx * dx + dy * dy;
 
         if (d2 < best_d2) {
             best_d2 = d2;
@@ -256,12 +245,9 @@ inline ProjectionInfo findProjectionOnPath(const std::vector<Vec2>& path,
     return info;
 }
 
-// =====================================================
-// Remaining length (open polyline)
-// =====================================================
 inline double computeRemainingPathLength(const std::vector<Vec2>& path,
-                                        int projIndex,
-                                        const Vec2& projPoint)
+                                         int projIndex,
+                                         const Vec2& projPoint)
 {
     const int N = static_cast<int>(path.size());
     if (N == 0) return 0.0;
@@ -274,40 +260,36 @@ inline double computeRemainingPathLength(const std::vector<Vec2>& path,
     }
 
     for (int i = projIndex; i < N - 1; ++i) {
-        double dx = path[i + 1].x - path[i].x;
-        double dy = path[i + 1].y - path[i].y;
+        const double dx = path[i + 1].x - path[i].x;
+        const double dy = path[i + 1].y - path[i].y;
         dist += std::hypot(dx, dy);
     }
-
     return dist;
 }
 
-// =====================================================
-// s_guess z geometrii polyline (dla projectToS)
-// =====================================================
 inline double guessSFromProjection(const std::vector<Vec2>& path,
-                                  const ProjectionInfo& proj)
+                                   const ProjectionInfo& proj)
 {
     if (path.size() < 2) return 0.0;
 
-    int i = std::clamp(proj.index, 1, (int)path.size() - 1);
+    const int i = std::clamp(proj.index, 1, (int)path.size() - 1);
 
     double s = 0.0;
     for (int k = 0; k < i - 1; ++k) {
-        double dx = path[k + 1].x - path[k].x;
-        double dy = path[k + 1].y - path[k].y;
+        const double dx = path[k + 1].x - path[k].x;
+        const double dy = path[k + 1].y - path[k].y;
         s += std::hypot(dx, dy);
     }
 
-    double dxp = proj.point.x - path[i - 1].x;
-    double dyp = proj.point.y - path[i - 1].y;
+    const double dxp = proj.point.x - path[i - 1].x;
+    const double dyp = proj.point.y - path[i - 1].y;
     s += std::hypot(dxp, dyp);
 
     return s;
 }
 
 // =====================================================
-// MPC-eligible: bolid behind path (open)
+// MPC-eligible path building (existing logic)
 // =====================================================
 inline PathProcessResult processMpcEligiblePath_bolide_behind_path(
     const TrackSpline2D& spline,
@@ -333,8 +315,8 @@ inline PathProcessResult processMpcEligiblePath_bolide_behind_path(
     Eigen::VectorXd X_temp(K);
     Eigen::VectorXd Y_temp(K);
 
-    double dx0 = spline.getX(0.0) - projection.point.x;
-    double dy0 = spline.getY(0.0) - projection.point.y;
+    const double dx0 = spline.getX(0.0) - projection.point.x;
+    const double dy0 = spline.getY(0.0) - projection.point.y;
 
     double dist_to_first_path_point = std::hypot(dx0, dy0);
     dist_to_first_path_point = std::max(dist_to_first_path_point, 1e-9);
@@ -342,7 +324,7 @@ inline PathProcessResult processMpcEligiblePath_bolide_behind_path(
     int points_to_add = static_cast<int>(std::ceil(dist_to_first_path_point / P.get("mpc_spatial_step")));
     points_to_add = std::max(1, points_to_add - 1);
 
-    double eps = 1e-6;
+    const double eps = 1e-6;
     if (points_to_add == 1) {
         points_to_add = 1;
     } else if (std::fabs(dist_to_first_path_point - 2 * P.get("mpc_spatial_step")) < eps) {
@@ -359,7 +341,7 @@ inline PathProcessResult processMpcEligiblePath_bolide_behind_path(
         curv_temp_ref(i) = 0.0;
     }
 
-    double dist_from_last_added_point_to_spline_start =
+    const double dist_from_last_added_point_to_spline_start =
         -dist_to_first_path_point + (points_to_add - 1) * P.get("mpc_spatial_step");
 
     double s = std::max(dist_from_last_added_point_to_spline_start + P.get("mpc_spatial_step"), 0.0);
@@ -370,8 +352,7 @@ inline PathProcessResult processMpcEligiblePath_bolide_behind_path(
         curv_temp_ref(i) = spline.getCurvature(s);
 
         s += P.get("mpc_spatial_step");
-        if (!spline.isClosed() && s > spline.totalLength())
-            s = spline.totalLength();
+        if (!spline.isClosed() && s > spline.totalLength()) s = spline.totalLength();
     }
 
     result.X_ref = X_temp;
@@ -384,9 +365,6 @@ inline PathProcessResult processMpcEligiblePath_bolide_behind_path(
     return result;
 }
 
-// =====================================================
-// MPC-eligible: bolid on path (open)
-// =====================================================
 inline PathProcessResult processMpcEligiblePath_bolide_on_path(
     const TrackSpline2D& spline,
     const std::vector<Vec2>& path_dense_for_guess,
@@ -411,7 +389,7 @@ inline PathProcessResult processMpcEligiblePath_bolide_on_path(
     result.X_ref(0) = projection.point.x;
     result.Y_ref(0) = projection.point.y;
 
-    double s_guess = guessSFromProjection(path_dense_for_guess, projection);
+    const double s_guess = guessSFromProjection(path_dense_for_guess, projection);
     double s = spline.projectToS(projection.point, s_guess, 2.0, 41, 6);
 
     result.yaw0 = spline.getYaw(s);
@@ -419,8 +397,7 @@ inline PathProcessResult processMpcEligiblePath_bolide_on_path(
 
     for (int i = 1; i < K; ++i) {
         s += P.get("mpc_spatial_step");
-        if (!spline.isClosed() && s > spline.totalLength())
-            s = spline.totalLength();
+        if (!spline.isClosed() && s > spline.totalLength()) s = spline.totalLength();
 
         result.X_ref(i) = spline.getX(s);
         result.Y_ref(i) = spline.getY(s);
@@ -430,10 +407,9 @@ inline PathProcessResult processMpcEligiblePath_bolide_on_path(
     return result;
 }
 
-/// ====================================================
-/// ALL_PATH_ELIGIBLE: planner prędkości + closed path
-/// ====================================================
-
+// =====================================================
+// Velocity planner (NEW fixed implementation)
+// =====================================================
 struct SpeedProfileGeom
 {
     double s0 = 0.0;
@@ -441,7 +417,10 @@ struct SpeedProfileGeom
     double S_plan = 0.0;
     std::vector<double> v;
     std::vector<double> kappa;
+    std::vector<double> a;
 };
+
+static inline double safeSqrt(double x) { return std::sqrt(std::max(0.0, x)); }
 
 static inline double wrapS(double s, double L)
 {
@@ -451,14 +430,7 @@ static inline double wrapS(double s, double L)
     return s;
 }
 
-static inline double wrapDist(double d, double L)
-{
-    if (L <= 1e-12) return 0.0;
-    d = std::fmod(d, L);
-    if (d < 0.0) d += L;
-    return d;
-}
-
+// friction ellipse longitudinal availability (kept)
 static inline double longAvail(double v, double kappa, double a_long_max, double a_lat_max)
 {
     const double ay = v*v * std::abs(kappa);
@@ -467,7 +439,272 @@ static inline double longAvail(double v, double kappa, double a_long_max, double
     return a_long_max * std::sqrt(term);
 }
 
-static inline SpeedProfileGeom buildSpeedProfileGeom(
+static inline void accelBoundsAt(
+    double v_here, double k_here,
+    double a_acc_max, double a_dec_max, double a_lat_max,
+    double& a_min_out, double& a_max_out)
+{
+    a_max_out =  longAvail(v_here, k_here, a_acc_max, a_lat_max);   // >=0
+    a_min_out = -longAvail(v_here, k_here, a_dec_max, a_lat_max);   // <=0
+}
+
+static inline std::vector<double> buildVSat(
+    const std::vector<double>& kappa,
+    double v_max,
+    double a_lat_max)
+{
+    const int N = (int)kappa.size();
+    std::vector<double> vsat(N, v_max);
+    for (int i = 0; i < N; ++i) {
+        const double kk = std::abs(kappa[i]);
+        double v_kappa = v_max;
+        if (kk > 1e-9) v_kappa = std::sqrt(std::max(0.0, a_lat_max / kk));
+        vsat[i] = std::clamp(v_kappa, 0.0, v_max);
+    }
+    return vsat;
+}
+
+// forward: your 3 cases
+static inline void forwardPass_threeCases(
+    const std::vector<double>& kappa,
+    const std::vector<double>& vsat,
+    double ds,
+    double v_min,
+    double v_max,
+    double a_acc_max,
+    double a_dec_max,
+    double a_lat_max,
+    double v0,
+    std::vector<double>& v,
+    std::vector<double>& a,
+    std::vector<bool>& is_valid)
+{
+    const int N = (int)kappa.size();
+    v.assign(N, 0.0);
+    a.assign(N, 0.0);
+    is_valid.assign(N, true);
+
+    v[0] = std::clamp(v0, v_min, v_max);
+
+    for (int i = 0; i < N - 1; ++i) {
+        const double v0i = v[i];
+        const double k0  = kappa[i];
+
+        const double a_av_max = longAvail(v0i, k0, a_acc_max, a_lat_max);      // >=0
+        const double a_av_min = -longAvail(v0i, k0, a_dec_max, a_lat_max);     // <=0
+
+        const double v_sat_next = vsat[i+1];
+        const double a_to_sat = (v_sat_next*v_sat_next - v0i*v0i) / (2.0*ds);
+
+        if (a_to_sat >= a_av_max) {
+            a[i] = a_av_max;
+            
+         //   if(i == 0) std::cout << "Forward pass: case 1 triggered at i=0" << std::endl;
+         //   if(i == 0) std::cout << "  a_av_max: " << a_av_max << ", a_to_sat: " << a_to_sat << std::endl;
+            v[i+1] = safeSqrt(v0i*v0i + 2.0*a[i]*ds);
+            v[i+1] = std::min(v[i+1], v_sat_next);
+            is_valid[i] = true;
+        }
+        else if (a_to_sat >= a_av_min && a_to_sat < a_av_max) {
+            a[i] = a_to_sat;
+            //if(i == 0 ) std::cout << "Forward pass: case 2 triggered at i=0" << std::endl;
+            v[i+1] = v_sat_next;
+            is_valid[i] = true;
+        }
+        else {
+            a[i] = 0.0;
+            //if(i == 0 ) std::cout << "Forward pass: case 3 triggered at i=0" << std::endl;
+            v[i+1] = v_sat_next;
+            is_valid[i] = false;
+        }
+
+        v[i+1] = std::clamp(v[i+1], v_min, v_max);
+        v[i+1] = std::min(v[i+1], vsat[i+1]);
+    }
+
+    a[N-1] = a[N-2];
+}
+
+// backward: your idea (keep a_avg if feasible else max brake)
+static inline void fullBackwardPass_fix(
+    const std::vector<double>& kappa,
+    const std::vector<double>& vsat,
+    double ds,
+    double a_acc_max,
+    double a_dec_max,
+    double a_lat_max,
+    std::vector<double>& v,
+    std::vector<double>& a,
+    std::vector<bool>& is_valid)
+{
+    const int N = (int)kappa.size();
+    if ((int)v.size() != N || (int)a.size() != N) return;
+
+    for (int i = N - 1; i >= 1; --i) {
+        const double k0 = kappa[i-1];
+        const double k1 = kappa[i];
+
+        const double v1 = v[i];
+        const double v0_old = v[i-1];
+
+        const double a_avg = (v1*v1 - v0_old*v0_old) / (2.0*ds);
+        const bool a_matches = std::abs(a[i-1] - a_avg) < 1e-6;
+
+        if (is_valid[i-1] && a_matches) continue;
+
+        double a1_min, a1_max;
+        accelBoundsAt(v1, k1, a_acc_max, a_dec_max, a_lat_max, a1_min, a1_max);
+
+        const double v0_reach_max = safeSqrt(v1*v1 - 2.0*a1_min*ds);                 // a1_min<=0 -> plus
+        const double v0_reach_min = safeSqrt(std::max(0.0, v1*v1 - 2.0*a1_max*ds));   // a1_max>=0 -> minus
+
+        double a0_min, a0_max;
+        accelBoundsAt(v0_old, k0, a_acc_max, a_dec_max, a_lat_max, a0_min, a0_max);
+
+        const bool valid_v = (v0_old >= v0_reach_min - 1e-9) && (v0_old <= v0_reach_max + 1e-9);
+        const bool valid_a_end   = (a_avg >= a1_min - 1e-9) && (a_avg <= a1_max + 1e-9);
+        const bool valid_a_start = (a_avg >= a0_min - 1e-9) && (a_avg <= a0_max + 1e-9);
+
+        if (valid_v && valid_a_end && valid_a_start) {
+            a[i-1] = a_avg;
+            is_valid[i-1] = true;
+            continue;
+        }
+
+        const double a_brake = -longAvail(v1, k1, a_dec_max, a_lat_max); // <=0
+
+        double v0_new = safeSqrt(v1*v1 - 2.0*a_brake*ds);
+
+        v[i-1] = v0_new;
+        a[i-1] = (v1*v1 - v0_new*v0_new) / (2.0*ds);
+        is_valid[i-1] = true;
+    }
+
+    a[N-1] = a[N-2];
+}
+
+// jerk clamp: dt = 2*ds/(v0+v1)
+static inline void jerkForwardClamp(
+    const std::vector<double>& kappa,
+    const std::vector<double>& vsat,
+    double ds,
+    double a_acc_max,
+    double a_dec_max,
+    double a_lat_max,
+    double jerk_up,
+    double jerk_down,
+    double a0_along,
+    std::vector<double>& v,
+    std::vector<double>& a,
+    std::vector<bool>& is_valid)
+{
+    const int N = (int)kappa.size();
+    if ((int)v.size() != N || (int)a.size() != N) return;
+
+    const double j_up   = std::max(0.0, jerk_up);
+    const double j_down = std::max(0.0, jerk_down);
+
+    double a_prev = std::clamp(a0_along, -a_dec_max, a_acc_max);
+
+    for (int i = 0; i < N - 1; ++i) {
+        const double v0 = v[i];
+        const double k0 = kappa[i];
+
+        double a_min, a_max;
+        accelBoundsAt(v0, k0, a_acc_max, a_dec_max, a_lat_max, a_min, a_max);
+
+        double v1_guess = v[i+1];
+        if (!std::isfinite(v1_guess)) v1_guess = v0;
+
+        const double v_sum = std::max(1e-3, v0 + v1_guess);
+        const double dt = (2.0*ds) / v_sum;
+
+        const double a_jmin = a_prev - j_down * dt;
+        const double a_jmax = a_prev + j_up   * dt;
+
+        double ai = a[i];
+        if (!std::isfinite(ai)) ai = 0.0;
+
+        ai = std::clamp(ai, a_jmin, a_jmax);
+        ai = std::clamp(ai, a_min, a_max);
+
+        double v1 = safeSqrt(v0*v0 + 2.0*ai*ds);
+
+        if (v1 > vsat[i+1]) {
+            is_valid[i] = false;
+            v1 = vsat[i+1];
+            ai = (v1*v1 - v0*v0) / (2.0*ds);
+        }
+
+        a[i] = ai;
+        v[i+1] = v1;
+        a_prev = ai;
+    }
+
+    a[N-1] = a[N-2];
+}
+
+static inline void final_jerkForwardClamp(
+    const std::vector<double>& kappa,
+    const std::vector<double>& vsat,
+    double ds,
+    double a_acc_max,
+    double a_dec_max,
+    double a_lat_max,
+    double jerk_up,
+    double jerk_down,
+    double a0_along,
+    std::vector<double>& v,
+    std::vector<double>& a,
+    std::vector<bool>& is_valid){
+
+        const int N = (int)kappa.size();
+    if ((int)v.size() != N || (int)a.size() != N) return;
+
+    const double j_up   = std::max(0.0, jerk_up);
+    const double j_down = std::max(0.0, jerk_down);
+
+    double a_prev = std::clamp(a0_along, -a_dec_max, a_acc_max);
+
+    for (int i = 0; i < N - 1; ++i) {
+        const double v0 = v[i];
+        const double k0 = kappa[i];
+
+        double a_min, a_max;
+        accelBoundsAt(v0, k0, a_acc_max, a_dec_max, a_lat_max, a_min, a_max);
+
+        double v1_guess = v[i+1];
+        if (!std::isfinite(v1_guess)) v1_guess = v0;
+
+        const double v_sum = std::max(1e-3, v0 + v1_guess);
+        const double dt = (2.0*ds) / v_sum;
+
+        const double a_jmin = a_prev - j_down * dt;
+        const double a_jmax = a_prev + j_up   * dt;
+
+        double ai = a[i];
+        if (!std::isfinite(ai)) ai = 0.0;
+
+        ai = std::clamp(ai, a_jmin, a_jmax);
+        ai = std::clamp(ai, a_min, a_max);
+
+        double v1 = safeSqrt(v0*v0 + 2.0*ai*ds);
+
+      
+
+        a[i] = ai;
+        v[i+1] = v1;
+        a_prev = ai;
+    }
+
+    a[N-1] = a[N-2];
+
+
+        
+    }
+
+// main planner: forward/backward + (jerk clamp -> FULL backward) merges
+static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
     const TrackSpline2D& sp_closed,
     double s0,
     double ds_geom,
@@ -476,12 +713,15 @@ static inline SpeedProfileGeom buildSpeedProfileGeom(
     double v_min,
     double v_max,
     double a_acc_max,
-    double a_dec_max,
-    double a_lat_max
-)
+    double a_dec_max,  // positive magnitude
+    double a_lat_max,
+    double jerk_up,
+    double jerk_down,
+    double a0_along,
+    int merge_iter)
 {
-    (void)v_min;
 
+    //std::cout << "along spline distance profile:" <<s0 << std::endl;
     SpeedProfileGeom prof;
     prof.s0 = s0;
     prof.ds = ds_geom;
@@ -492,68 +732,125 @@ static inline SpeedProfileGeom buildSpeedProfileGeom(
     if (ds_geom <= 1e-6 || S_plan <= ds_geom) return prof;
 
     const int N = (int)std::floor(S_plan / ds_geom) + 1;
-    prof.v.resize(N);
-    prof.kappa.resize(N);
 
-    std::vector<double> v_lim(N);
-
-    for (int i = 0; i < N; ++i) {
-        double s = wrapS(s0 + (double)i * ds_geom, L);
-        double kap = sp_closed.getCurvature(s);
-        prof.kappa[i] = kap;
-
-        const double kk = std::abs(kap);
-        double v_kappa = v_max;
-        if (kk > 0.001) v_kappa = std::sqrt(a_lat_max / kk);
-
-        v_lim[i] = std::clamp(v_kappa, 0.0, v_max);
-    }
-
-    const double v0 = std::clamp(v0_along, 0.0, v_max);
-
-    std::vector<double> v_fwd(N);
-    v_fwd[0] = std::min(v_lim[0], v0);
-
-    for (int i = 0; i < N - 1; ++i) {
-        const double a_av = longAvail(v_fwd[i], prof.kappa[i], a_acc_max, a_lat_max);
-        const double v_next_max = std::sqrt(std::max(0.0, v_fwd[i]*v_fwd[i] + 2.0*a_av*ds_geom));
-        v_fwd[i+1] = std::min(v_lim[i+1], v_next_max);
-    }
-
-    std::vector<double> v_bwd(N);
-    v_bwd[N-1] = v_fwd[N-1];
-
-    for (int i = N - 2; i >= 0; --i) {
-        const double a_av = longAvail(v_bwd[i+1], prof.kappa[i+1], a_dec_max, a_lat_max);
-        const double v_prev_max = std::sqrt(std::max(0.0, v_bwd[i+1]*v_bwd[i+1] + 2.0*a_av*ds_geom));
-        v_bwd[i] = std::min(v_lim[i], v_prev_max);
-    }
+    prof.v.assign(N, 0.0);
+    prof.kappa.assign(N, 0.0);
+    prof.a.assign(N, 0.0);
 
     for (int i = 0; i < N; ++i) {
-        prof.v[i] = std::min(v_fwd[i], v_bwd[i]);
-        prof.v[i] = std::clamp(prof.v[i], 0.0, v_lim[i]);
+        const double s = wrapS(s0 + (double)i * ds_geom, L);
+        prof.kappa[i] = sp_closed.getCurvature(s);
     }
 
-    prof.v[0] = std::min(prof.v[0], v0);
+    const std::vector<double> vsat = buildVSat(prof.kappa, v_max, a_lat_max);
+
+    std::vector<double> v, a;
+    std::vector<bool> is_valid;
+
+    forwardPass_threeCases(
+        prof.kappa, vsat,
+        ds_geom,
+        v_min, v_max,
+        a_acc_max, a_dec_max, a_lat_max,
+        v0_along,
+        v, a, is_valid);
+
+    fullBackwardPass_fix(
+        prof.kappa, vsat,
+        ds_geom,
+        a_acc_max, a_dec_max, a_lat_max,
+        v, a, is_valid);
+
+    for (int it = 0; it < std::max(0, merge_iter); ++it) {
+        jerkForwardClamp(
+            prof.kappa, vsat,
+            ds_geom,
+            a_acc_max, a_dec_max, a_lat_max,
+            jerk_up, jerk_down,
+            a0_along,
+            v, a,is_valid);
+
+
+        fullBackwardPass_fix(
+            prof.kappa, vsat,
+            ds_geom,
+            a_acc_max, a_dec_max, a_lat_max,
+            v, a, is_valid);
+    }
+    final_jerkForwardClamp(
+        prof.kappa, vsat,
+        ds_geom,
+        a_acc_max, a_dec_max, a_lat_max,
+        jerk_up*5.0, jerk_down*5.0,
+        a0_along,
+        v, a,is_valid);
+
+    // final clamps
+    for (int i = 0; i < N; ++i) {
+        double vi = v[i];
+        if (!std::isfinite(vi)) vi = 0.0;
+        vi = std::clamp(vi, v_min, v_max);
+        vi = std::min(vi, vsat[i]);
+        v[i] = vi;
+    }
+    for (int i = 0; i < N; ++i) {
+        if (!std::isfinite(a[i])) a[i] = 0.0;
+    }
+
+    prof.v = std::move(v);
+    prof.a = std::move(a);
+
     return prof;
 }
 
-static inline double profileV_atDistance(const SpeedProfileGeom& prof, double dist)
+struct Profile_at_single_point
 {
-    if (prof.v.size() < 2) return 0.0;
+    double s0   = 0.0;
+    double a_ref = 0.0;
+    double v_ref = 0.0;
+    double k_ref = 0.0;
+    double R_ref = 0.0;
+};
 
-    dist = std::clamp(dist, 0.0, prof.S_plan);
-    const double u = dist / prof.ds;
+static inline Profile_at_single_point profile_atDistance(const SpeedProfileGeom& prof, double dist)
+{
+    Profile_at_single_point res;
+    double distance_temp = wrapS(dist, prof.S_plan);
+    res.s0 = distance_temp;
+    const int N = (int)prof.v.size();
+    if (N < 2) return res;
+    if ((int)prof.a.size() != N) return res;
+    if ((int)prof.kappa.size() != N) return res;
+
+    double dist_from_profile_start = dist - prof.s0;
+    dist_from_profile_start = wrapS(dist_from_profile_start, prof.S_plan);
+    
+    const double u = dist_from_profile_start / prof.ds;
     int i = (int)std::floor(u);
-    i = std::clamp(i, 0, (int)prof.v.size() - 2);
+    i = std::clamp(i, 0, N - 2);
+    
 
-    const double a = u - (double)i;
-    return (1.0 - a) * prof.v[i] + a * prof.v[i+1];
+    const double alpha = u - (double)i;
+    //std::cout<<"alpha: "<<alpha<<std::endl;
+
+    auto lerp = [&](double x0, double x1) -> double {
+        return (1.0 - alpha)*x0 + alpha*x1;
+    };
+
+    res.v_ref = lerp(prof.v[i],     prof.v[i+1]);
+    res.a_ref = lerp(prof.a[i],     prof.a[i+1]);
+    // if(i == 0 ){
+    //     std::cout << "a at 0:" << prof.a[i] << " a at 1 :"<< prof.a[i+1] <<std::endl;
+    //     std::cout << "a ref: " << res.a_ref << std::endl;
+    // }
+    res.k_ref = lerp(prof.kappa[i], prof.kappa[i+1]);
+
+    const double kk = std::abs(res.k_ref);
+    res.R_ref = (kk > 1e-9) ? (1.0 / kk) : std::numeric_limits<double>::infinity();
+
+    return res;
 }
 
-// =====================================================
-// friction usage (elipsa)
-// =====================================================
 static inline void logFrictionUseEllipse_Planned(
     int k,
     double v_plan,
@@ -583,7 +880,6 @@ static inline void logFrictionUseEllipse_Planned(
 
 // =====================================================
 // FINAL: all_path + velocity planner (closed loop)
-// - START PROFILU z v_along z odometrii (bez wymuszenia v_min)
 // =====================================================
 inline PathProcessResult all_path_and_velocity_planner_process_for_control(
     const ParamBank& P,
@@ -600,28 +896,36 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
     const double L = spline_closed.totalLength();
     const int    K = (int)P.get("mpc_N");
 
-    const double odom_freq = P.get("odom_frequency");
-    const double dt = (odom_freq > 1e-6) ? (1.0 / odom_freq) : 0.02;
-
-    double ds_geom = 0.3;
-
-    const double a_acc_max_raw = P.get("vel_planner_max_accel");
-    const double a_dec_max_raw = -P.get("vel_planner_max_decel");
-    const double v_min         = P.get("vel_planner_v_min");
-    const double v_max         = P.get("vel_planner_v_max");
-    const double a_lat_max_raw = P.get("vel_planner_max_corrnering_accel");
-    const double safety        = P.get("vel_planner_saftey_factor");
-
-    const double a_acc_max = std::max(0.0, safety * a_acc_max_raw);
-    const double a_dec_max = std::max(0.0, safety * a_dec_max_raw);
-    const double a_lat_max = std::max(1e-6, safety * a_lat_max_raw);
-
     if (K < 2 || L <= 1e-6) {
         ROS_WARN_STREAM("[VelPlanner] bad K or L");
         return out;
     }
 
-    // -------- find s0 --------
+    const double ds_geom = P.get("vel_planner_spatial_step");
+    const double ds_mpc  = P.get("mpc_spatial_step");
+
+    const double a_acc_max_raw = P.get("vel_planner_max_accel");                 // +
+    const double a_dec_max_raw = P.get("vel_planner_max_decel");                 // + (magnitude)
+    const double v_min_raw     = P.get("vel_planner_v_min");
+    const double v_max_raw     = P.get("vel_planner_v_max");
+    const double a_lat_max_raw = P.get("vel_planner_max_corrnering_accel");
+    const double safety        = P.get("vel_planner_saftey_factor");
+
+    const double j_max_raw = P.get("vel_planner_max_jerk");
+    const int merge_iter = (int)P.get("vel_planner_number_of_jerk_merging_iterations");
+
+    const double a_acc_max = std::max(0.0, safety * a_acc_max_raw);
+    const double a_dec_max = std::max(0.0, safety * std::abs(a_dec_max_raw));
+    const double a_lat_max = std::max(1e-6, safety * a_lat_max_raw);
+
+    const double v_min = std::max(0.0, v_min_raw);
+    const double v_max = std::max(v_min + 1e-3,  v_max_raw);
+
+    const double j_max = std::max(0.0,  j_max_raw);
+
+    double mpc_dt = 1.0/P.get("odom_frequency");
+
+    // ---- find s0 (coarse + project) ----
     const Vec2 q((float)bolide_state.X, (float)bolide_state.Y);
 
     double s_guess = 0.0;
@@ -630,40 +934,47 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
         double best_d2 = std::numeric_limits<double>::infinity();
         for (int i = 0; i < M; ++i) {
             const double s = (double)i * (L / (double)M);
-            Vec2 p = spline_closed.eval(s);
+            const Vec2 p = spline_closed.eval(s);
             const double dx = (double)p.x - (double)q.x;
             const double dy = (double)p.y - (double)q.y;
             const double d2 = dx*dx + dy*dy;
             if (d2 < best_d2) { best_d2 = d2; s_guess = s; }
         }
     }
-
     const double s0 = spline_closed.projectToS(q, s_guess, 8.0, 61, 8);
 
-    // -------- v0 along track --------
+    // ---- yaw0 ----
     const double yaw0 = spline_closed.getYaw(s0);
-    out.yaw0 = yaw0; // <<< KLUCZ: zwracamy yaw0
+    out.yaw0 = yaw0;
 
-    const double bolide_yaw = bolide_state.yaw;
+    // ---- v0 along ----
+    //double v0_along = bolide_state.vx * std::cos(bolide_state.yaw - yaw0) - bolide_state.vy * std::sin(bolide_state.yaw - yaw0);
+    //if (!std::isfinite(v0_along)) v0_along = 0.0;
+    double v0_along = bolide_state.vx;
+    v0_along = std::clamp(v0_along, v_min, v_max);
 
-    double epsi = bolide_yaw - yaw0;
-    unwrap_angle(epsi);
+    // ---- a0 along ----
+    double a0_along = bolide_state.acc;
+    if (!std::isfinite(a0_along)) a0_along = 0.0;
+    a0_along = std::clamp(a0_along, -a_dec_max, a_acc_max);
 
-    double v0_along = bolide_state.vx * std::cos(epsi) + bolide_state.vy * std::sin(epsi);
-    if (!std::isfinite(v0_along)) v0_along = 0.0;
-
-    v0_along = std::clamp(v0_along, 0.0, v_max);
-
-    // -------- build v(dist) over full loop --------
+    // ---- build full-loop speed profile ----
     const double S_plan = L;
-    SpeedProfileGeom prof = buildSpeedProfileGeom(
+    SpeedProfileGeom prof = forward_backward_pass_with_jerk_full_backward(
         spline_closed,
         s0,
         ds_geom,
         S_plan,
         v0_along,
-        v_min, v_max,
-        a_acc_max, a_dec_max, a_lat_max
+        v_min,
+        v_max,
+        a_acc_max,
+        a_dec_max,
+        a_lat_max,
+        j_max,
+        j_max,
+        a0_along,
+        merge_iter
     );
 
     if (prof.v.size() < 2) {
@@ -671,7 +982,9 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
         return out;
     }
 
-    // -------- time sampling to MPC horizon --------
+    
+
+    // ---- output refs for MPC horizon ----
     out.N = K;
     out.X_ref.resize(K);
     out.Y_ref.resize(K);
@@ -679,81 +992,37 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
     out.velocity_ref.resize(K);
     out.acceleration_ref.resize(K);
 
-    double s = s0;
-    double dist_ahead = 0.0;
-
-    std::vector<double> v_tmp(K, 0.0);
-    std::vector<double> kappa_tmp(K, 0.0);
-    std::vector<double> a_lat_tmp(K, 0.0);
-
-    double v_prev = std::clamp(v0_along, 0.0, v_max);
-
-    for (int k = 0; k < K; ++k)
-    {
-        Vec2 p = spline_closed.eval(s);
-        out.X_ref(k) = p.x;
-        out.Y_ref(k) = p.y;
-
-        const double kappa = spline_closed.getCurvature(s);
-        out.curvature(k) = kappa;
-        kappa_tmp[k] = kappa;
-
-        dist_ahead = wrapDist(dist_ahead, S_plan);
-        const double v_prof = profileV_atDistance(prof, dist_ahead);
-
-        double v;
-        if (k == 0) {
-            v = v_prev;
-        } else {
-            const double v_min_next = std::max(0.0, v_prev - a_dec_max * dt);
-            const double v_max_next = v_prev + a_acc_max * dt;
-            v = std::clamp(v_prof, v_min_next, v_max_next);
-            v = std::clamp(v, v_min, v_max);
-        }
-
-        out.velocity_ref(k) = v;
-        v_tmp[k] = v;
-
-        const double a_lat_plan = v * v * std::abs(kappa);
-        a_lat_tmp[k] = a_lat_plan;
-
-        v_prev = v;
-
-        const double ds_k = std::max(v,0.2) * dt;
-        dist_ahead += ds_k;
-        s = wrapS(s + ds_k, L);
-    }
-
-    for (int k = 0; k < K - 1; ++k) {
-        out.acceleration_ref(k) = (v_tmp[k+1] - v_tmp[k]) / std::max(1e-6, dt);
-    }
-    out.acceleration_ref(K-1) = out.acceleration_ref(K-2);
-
-    {
-        const int k = 0;
-        logFrictionUseEllipse_Planned(
-            k,
-            v_tmp[k],
-            kappa_tmp[k],
-            a_lat_tmp[k],
-            out.acceleration_ref(k),
-            a_acc_max,
-            a_dec_max,
-            a_lat_max
-        );
-    }
-
     out.valid = true;
     out.geo_eligible = true;
     out.curv_eligible = true;
     out.mpc_eligible = true;
     out.all_path_eligible = true;
 
+    double s_along = s0;
+    // std::cout << "Initial along spline distance for MPC: " << s_along << std::endl;
+    // std::cout << "Spline total length: " << L << std::endl;
+    for (int i = 0; i < K; ++i) {
+
+        s_along = wrapS(s_along, L);
+        // if(i == 0) std::cout << "along spline distance  sampling:" <<s_along << std::endl;
+
+        const auto pr = profile_atDistance(prof, s_along);        
+        out.X_ref(i) = spline_closed.getX(s_along);
+        out.Y_ref(i) = spline_closed.getY(s_along);
+        out.curvature(i) = spline_closed.getCurvature(s_along);
+        out.velocity_ref(i) = pr.v_ref;
+        out.acceleration_ref(i) = pr.a_ref;
+        if(i == 0) {
+           // std::cout<< "a ref at first MPC point: " << pr.a_ref << std::endl;
+        }
+        s_along += pr.v_ref*mpc_dt + 0.5*pr.a_ref*mpc_dt*mpc_dt;
+    }
+
     return out;
 }
 
 // =====================================================
-// Główna funkcja
+// Główna funkcja (NIE RUSZONA LOGIKA PATH/MPC) + hook all_path
 // =====================================================
 inline PathProcessResult path_process_for_control(
         const ParamBank& P,
@@ -822,9 +1091,6 @@ inline PathProcessResult path_process_for_control(
         return makeCurvInvalidResult(X_tmp, Y_tmp);
     }
 
-    // ===================================================================
-    // TRYB ALL_PATH_ELIGIBLE: closed loop + planner prędkości
-    // ===================================================================
     if (all_path_eligible_flag)
     {
         std::vector<Vec2> path_base = buildPathBase(X_path, Y_path);
@@ -840,9 +1106,6 @@ inline PathProcessResult path_process_for_control(
         return all_path_and_velocity_planner_process_for_control(P, spline_closed, bolide_state);
     }
 
-    // ===================================================================
-    // TRYB NORMALNY: open path
-    // ===================================================================
     PathProcessResult result;
 
     std::vector<Vec2> path_base = buildPathBase(X_path, Y_path);

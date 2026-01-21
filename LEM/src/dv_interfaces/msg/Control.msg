@@ -6,3 +6,4 @@ float32 movement
 float32 steeringAngle_rad
 uint8 serviceBrake
 bool finished
+float32 current_speed

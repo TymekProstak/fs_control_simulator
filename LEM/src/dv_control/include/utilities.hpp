@@ -33,6 +33,7 @@ struct State{
  double vx;
  double vy;
  double yaw_rate;
+ double acc;
 };
 
 inline double unwrap_angle(double &angle){

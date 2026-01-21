@@ -100,6 +100,7 @@ namespace v2_control {
         double ey_sum = 0.0;
         int ey_count = 0;
         double epsi_sum = 0.0;
+        double v_s_sum = 0.0;
 
         bool first_path_received = false;
 
@@ -109,6 +110,10 @@ namespace v2_control {
         Eigen::VectorXd X_path_all;
         Eigen::VectorXd Y_path_all;
         double path_yaw_ = 0.0;
+        double kappa_last_ = 0.0;
+        double v_ref_last_ = 0.0;
+        double R_ref_last_ = 0.0;
+        double alat_ref_last_ = 0.0;
 
 	 
     };

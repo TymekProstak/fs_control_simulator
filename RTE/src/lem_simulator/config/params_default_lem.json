@@ -83,7 +83,9 @@
     "pose_noise": 0.05,
     "orientation_noise": 0.001,
     "rotation_noise": 0.01,
-    "ins_frequancy": 50
+    "speed_gps_noise": 0.05,
+    "ins_frequancy": 30,
+    "gps_speed_frequancy": 10
   },
 
   "vision": {
