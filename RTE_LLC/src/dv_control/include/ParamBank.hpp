@@ -153,7 +153,7 @@ inline ParamBank build_param_bank(const nlohmann::json& J) {
   P.add("vel_planner_max_jerk", JgetReq(J, "velocity_planner.max jerk"));
   P.add("vel_planner_spatial_step", JgetReq(J, "velocity_planner.spatial_step"));
   P.add("vel_planner_number_of_jerk_merging_iterations", JgetReq(J, "velocity_planner.number_of_jerk_merging_iterations"));
-  P.add("vel_planner_smoothing_factor", JgetReq(J, "velocity_planner.smoothing_factor"));
+  P.add("vel_planner_final_jerk_smooth_factor", JgetReq(J, "velocity_planner.smoothing_factor"));
   return P;
 }
 

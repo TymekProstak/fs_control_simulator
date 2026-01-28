@@ -222,7 +222,10 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("slip_brake_on",     JgetReqSafe(J,"dv_board.slip_brake_on"));
   P.add("slip_brake_off",    JgetReqSafe(J,"dv_board.slip_brake_off"));
 
-
+  // QP torque allocation
+  P.add("torque_allocation_lambda_factor", JgetReqSafe(J,"dv_board.torque_allocation_lambda_factor"));
+  P.add("torque_allocation_fx_ref",    JgetReqSafe(J,"dv_board.torque_allocation_fx_ref"));
+  P.add("torque_allocation_mz_ref",    JgetReqSafe(J,"dv_board.torque_allocation_mz_ref"));
 
     //// --- Pose / INS ---
     P.add("pose_noise",        JgetReqSafe(J,"pose.pose_noise"));

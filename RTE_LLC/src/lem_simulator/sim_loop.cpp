@@ -89,7 +89,6 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     // --- DIAG: reset stanu ---
     std::cout << "[INIT] Resetting simulation state..." << std::endl;
     state_.setZero();
-    //state_.vx = 2.0;    
 
 
     // --- DIAG: wczytanie pachołków ---
@@ -126,7 +125,6 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
     phase_steer_apply_  = pick_phase_(step_of_steer_input_sending_);
     phase_gps_speed_reading_    = pick_phase_(step_gps_speed_reading_);
     phase_control_input_read_    = pick_phase_(step_of_control_input_read_);
-
 
 
         std::cout << "[PHASES] cam="    << phase_camera_shoot_
@@ -205,21 +203,18 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
 
     ROS_WARN_STREAM("Init yaw=" << state_.yaw << " vy=" << state_.vy);
 
-    // --- Traction control PID init (drive/brake) ---
+    // --- Traction control PID init (4WD: 8x PID) ---
     {
         PIDParams drive{};
         drive.Kp = P_.get("pid_traction_p");
         drive.Ki = P_.get("pid_traction_i");
         drive.Kd = P_.get("pid_traction_d");
 
-        // Limity TC wg configu
         drive.saturation_upper = P_.get("pid_traction_max_drive");
         drive.saturation_lower = P_.get("pid_traction_min_drive");
 
         drive.anti_windup_gain = P_.get("pid_traction_anti_windup_gain_drive");
         drive.leak_time_scale  = P_.get("pid_traction_leak_time_scale_drive");
-        traction_control_pid_drive_.set_params(drive);
-        traction_control_pid_drive_.reset();
 
         PIDParams brake{};
         brake.Kp = P_.get("pid_traction_p");
@@ -231,9 +226,20 @@ Simulation_lem_ros_node::Simulation_lem_ros_node(ros::NodeHandle& nh,
 
         brake.anti_windup_gain = P_.get("pid_traction_anti_windup_gain_brake");
         brake.leak_time_scale  = P_.get("pid_traction_leak_time_scale_brake");
-        traction_control_pid_brake_.set_params(brake);
-        traction_control_pid_brake_.reset();
+
+        // DRIVE PIDs
+        tc_drive_fl_.set_params(drive); tc_drive_fl_.reset();
+        tc_drive_fr_.set_params(drive); tc_drive_fr_.reset();
+        tc_drive_rl_.set_params(drive); tc_drive_rl_.reset();
+        tc_drive_rr_.set_params(drive); tc_drive_rr_.reset();
+
+        // BRAKE PIDs
+        tc_brake_fl_.set_params(brake); tc_brake_fl_.reset();
+        tc_brake_fr_.set_params(brake); tc_brake_fr_.reset();
+        tc_brake_rl_.set_params(brake); tc_brake_rl_.reset();
+        tc_brake_rr_.set_params(brake); tc_brake_rr_.reset();
     }
+
 
     // --- Kalman init (jeśli używany) ---
     {
@@ -281,7 +287,12 @@ void Simulation_lem_ros_node::step() {
         send_to_ts_if_due();
         send_steer_to_maxon_if_due_();
 
-        euler_sim_timestep(state_, Input(torque_command_to_invert_, steer_command_to_maxon_), P_);
+        euler_sim_timestep(
+            state_,
+            Input(torque_cmd_fl_, torque_cmd_fr_, torque_cmd_rl_, torque_cmd_rr_, steer_command_to_maxon_),
+            P_
+        );
+        
 
 
         ++step_number_;
@@ -314,35 +325,9 @@ void Simulation_lem_ros_node::step() {
 }
 
 
-
-// dv board reads control topic at fixed cadence
-void Simulation_lem_ros_node::read_control_by_dv_board_if_due()
-{
-    if( is_due(step_number_, step_of_control_input_read_, phase_control_input_read_) )
-    last_input_read_by_dv_board = last_input_cached;
-}
-
-void Simulation_lem_ros_node::read_wheel_encoder_if_due_()
-{
-    if (step_of_wheel_encoder_reading_ <= 0) return;
-    if (!is_due(step_number_, step_of_wheel_encoder_reading_, phase_wheel_encoder_reading_)) return;
-
-    const double R = P_.get("R");
-
-    wheel_speed_read_right = state_.omega_rr * R;
-    wheel_speed_read_left  = state_.omega_rl * R;
-}
-
-void Simulation_lem_ros_node::read_steer_by_orin_if_due_()
-{
-    if( is_due(step_number_, step_of_steer_input_sending_, phase_steer_apply_) )
-    {
-        steer_command_to_maxon_ = last_input_cached.steeringAngle_rad;
-    }
-
-
-}
-
+State Simulation_lem_ros_node::get_state() const { return state_; }
+ParamBank Simulation_lem_ros_node::get_parameters() const { return P_; }
+int Simulation_lem_ros_node::get_step_number() const { return step_number_; }
 
 // ====== ROS callback ======
 // caching last requested input from control
@@ -380,6 +365,34 @@ void Simulation_lem_ros_node::compute_step_intervals_from_params_() {
 }
 
 // dv board reads control topic at fixed cadence
+void Simulation_lem_ros_node::read_control_by_dv_board_if_due()
+{
+    if( is_due(step_number_, step_of_control_input_read_, phase_control_input_read_) )
+    last_input_read_by_dv_board = last_input_cached;
+}
+
+void Simulation_lem_ros_node::read_wheel_encoder_if_due_()
+{
+    if (step_of_wheel_encoder_reading_ <= 0) return;
+    if (!is_due(step_number_, step_of_wheel_encoder_reading_, phase_wheel_encoder_reading_)) return;
+
+    const double R = P_.get("R");
+
+    wheel_speed_fl_ = state_.omega_fl * R;
+    wheel_speed_fr_ = state_.omega_fr * R;
+    wheel_speed_rl_ = state_.omega_rl * R;
+    wheel_speed_rr_ = state_.omega_rr * R;
+}
+
+void Simulation_lem_ros_node::read_steer_by_orin_if_due_()
+{
+    if( is_due(step_number_, step_of_steer_input_sending_, phase_steer_apply_) )
+    {
+        steer_command_to_maxon_ = last_input_cached.steeringAngle_rad;
+    }
+
+
+}
 void Simulation_lem_ros_node::read_ins_if_due_()
 {
     const bool due_ins = (step_of_ins_reading_ > 0) &&
@@ -505,7 +518,6 @@ void Simulation_lem_ros_node::read_ins_if_due_()
 }
 
 
-
 void Simulation_lem_ros_node::shoot_camera_or_enqueue_if_due_()
 {
     if (step_of_camera_shoot_ <= 0) return;
@@ -544,135 +556,189 @@ void Simulation_lem_ros_node::publish_ready_camera_frames_from_queue_() {
 // sending torque to tractive system if due - dv_board communicates with tractive system at fixed cadence
 void Simulation_lem_ros_node::send_to_ts_if_due()
 {
-
-    // 2) TS update only at its cadence
     if (!is_due(step_number_, step_number_torque_input_sending_, phase_torque_apply_)) {
         return;
     }
 
-    // msg: move_type: 0 = TORQUE_PERCENTAGE, 1 = SPEED_KMH
-    const bool speed_mode = last_input_read_by_dv_board.move_type;
+    const bool speed_mode = last_input_read_by_dv_board.move_type; // 0 torque%, 1 speed
     const double Ts = P_.get("simulation_time_step") * step_number_torque_input_sending_;
 
-
-    if (!speed_mode) {
-        // TORQUE_PERCENTAGE: movement is [%] (expected -100..100)
+    // =========================================================
+    // TORQUE_PERCENTAGE
+    // =========================================================
+    if (!speed_mode)
+    {
         const double torque_percentage = static_cast<double>(last_input_read_by_dv_board.movement);
-        const double speed_current = static_cast<double>(last_input_read_by_dv_board.current_speed);
-        double torque_temp = std::clamp(torque_percentage, -100.0, 100.0);
-        torque_temp = (torque_temp * P_.get("max_torque")) / 100.0;
+        const double speed_current     = static_cast<double>(last_input_read_by_dv_board.current_speed);
 
-        const double wheel_speed_drive_on = speed_current*(1 + P_.get("slip_drive_on"));
-        const double wheel_speed_drive_off = speed_current*(1 + P_.get("slip_drive_off"));
-        const double wheel_speed_brake_on =  speed_current*(1 + P_.get("slip_brake_on"));
-        const double wheel_speed_brake_off =  speed_current*(1 + P_.get("slip_brake_off"));
+        // całkowity moment z kontrolera
+        double torque_total = std::clamp(torque_percentage, -100.0, 100.0);
+        torque_total = (torque_total * 4 * P_.get("max_torque")) / 100.0;
+        const double force_total = torque_total / P_.get("R");
+        std::cout << "force total: " << force_total << std::endl;
+        std::cout << "a_desired: " << force_total / P_.get("m") << std::endl;
+
+        // 4WD: startowo dzielę 1/4 na koło (tak jak chcesz)
+        double tq_fl = 0.25 * torque_total;
+        double tq_fr = 0.25 * torque_total;
+        double tq_rl = 0.25 * torque_total;
+        double tq_rr = 0.25 * torque_total;
+
+
+        // =========================================================
+        // Solve QP for alloacation of torque to wheels to follow MPC reference
+
+        if( lov_level_control_on == true){
+
+            Torque_allocation torque_allocated = allocate_torque_optimaly(force_total, static_cast<double>(last_input_read_by_dv_board.mz_target));
+
+            tq_fl = torque_allocated.torque_fl;;
+            tq_fr = torque_allocated.torque_fr;;
+            tq_rl = torque_allocated.torque_rl;;
+            tq_rr = torque_allocated.torque_rr;
+
+        }
+        // =========================================================
+
+        // progi slipu
+        const double wheel_speed_drive_on  = speed_current * (1 + P_.get("slip_drive_on"));
+        const double wheel_speed_drive_off = speed_current * (1 + P_.get("slip_drive_off"));
+        const double wheel_speed_brake_on  = speed_current * (1 + P_.get("slip_brake_on"));
+        const double wheel_speed_brake_off = speed_current * (1 + P_.get("slip_brake_off"));
 
         const double speed_target_drive = speed_current * (1 + P_.get("target_slip_drive"));
         const double speed_target_brake = speed_current * (1 + P_.get("target_slip_brake"));
 
-
-        //  Sprawdzenie wyłacznie TC
-        // warunek wyłączenia TC dla napędu
-        if( 
-            wheel_speed_read_left < wheel_speed_drive_off &&
-            wheel_speed_read_right < wheel_speed_drive_off )
+        // helper: TC per koło (drive/brake)
+        auto tc_on_one_wheel = [&](double wheel_speed,
+                                  double& torque_wheel,
+                                  PIDController& pid_drive,
+                                  PIDController& pid_brake)
         {
-            traction_control_pid_drive_.update(0.0, Ts,false); // teraz wyłączamy TC -> integrator robi leak
-        }
-
-        if( 
-            wheel_speed_read_left  > wheel_speed_brake_off &&
-            wheel_speed_read_right > wheel_speed_brake_off )
-        {
-            traction_control_pid_brake_.update(0.0, Ts,false); // teraz wyłączamy TC -> integrator robi leak
-        }
-
-
-
-        // TRACTION CONTROL - DRIVE
-
-        if( torque_temp > 0 ) // tylko przy dodatnim momencie
-        {
-
-            const double error =  (std::max(wheel_speed_read_left, wheel_speed_read_right) - speed_target_drive) / std::max( speed_current , 2.0) ;
-            // warunek włączenia TC dla napędu
-
-            if(traction_control_pid_drive_.is_active())
-            {
-                traction_control_pid_drive_.update(error, Ts,true);
-                const double tc_output = traction_control_pid_drive_.get_output();
-                if(lov_level_control_on) torque_temp = std::max(0.0,std::min(torque_temp, 2*tc_output));
+            // ===============================
+            // 1) warunki wyłączenia PIDów
+            // ===============================
+            if (wheel_speed < wheel_speed_drive_off) {
+                pid_drive.update(0.0, Ts, false); // leak
+            }
+            if (wheel_speed > wheel_speed_brake_off) {
+                pid_brake.update(0.0, Ts, false); // leak
             }
 
-            else if( wheel_speed_read_left  > wheel_speed_drive_on || wheel_speed_read_right > wheel_speed_drive_on )
+            // ===============================
+            // 2) DRIVE TC (moment dodatni)
+            // ===============================
+            if (torque_wheel > 0.0)
             {
-                
-                traction_control_pid_drive_.update(error, Ts,true);
-                const double tc_output = traction_control_pid_drive_.get_output();
-                if(lov_level_control_on) torque_temp = std::max(0.0,std::min(torque_temp, 2*tc_output));
-            }
-            // jeśli włączony to aktualizuj PID 
-            
-        }
-        
-        // TRACTION CONTROL - BRAKE 
-        if( torque_temp < 0 ) // tylko przy ujemnym momencie
-        {
-            const double error =  (std::min(wheel_speed_read_left, wheel_speed_read_right) - speed_target_brake)/std::max( speed_current , 2.0) ;
-            // warunek włączenia TC dla hamowania
-             // jeśli włączony to aktualizuj PID 
-             if(traction_control_pid_brake_.is_active())
-             {
-                 traction_control_pid_brake_.update(error, Ts,true);
-                 const double tc_output = traction_control_pid_brake_.get_output();
-                if(lov_level_control_on) torque_temp = std::min(0.0,std::max(torque_temp, 2*tc_output));
-             }
+                const double error =
+                    (wheel_speed - speed_target_drive) / std::max(speed_current, 2.0);
 
-            
-            else if( wheel_speed_read_left  < wheel_speed_brake_on || wheel_speed_read_right < wheel_speed_brake_on )
-            {
-                
-                traction_control_pid_brake_.update(error, Ts,true);
-                const double tc_output = traction_control_pid_brake_.get_output();
-                if(lov_level_control_on) torque_temp = std::min(0.0,std::max(torque_temp, 2*tc_output));
-            }
+                if (pid_drive.is_active())
+                {
+                    pid_drive.update(error, Ts, true);
+                    const double tc_output = pid_drive.get_output();
+                    if(lov_level_control_on) torque_wheel = std::max(0.0, std::min(torque_wheel, tc_output));
+
+                   
+                }
+                else if (wheel_speed > wheel_speed_drive_on)
+                {
+                    pid_drive.update(error, Ts, true);
+                    const double tc_output = pid_drive.get_output();
+                    if(lov_level_control_on) torque_wheel = std::max(0.0, std::min(torque_wheel,  tc_output));
+                }
+
            
-        }
+            }
 
-         // =========================================================
-        // TC active time accounting (NEW)
+            // ===============================
+            // 3) BRAKE TC (moment ujemny)
+            // ===============================
+            if (torque_wheel < 0.0)
+            {
+                const double error =
+                    (wheel_speed - speed_target_brake) / std::max(speed_current, 2.0);
+
+                if (pid_brake.is_active())
+                {
+                    pid_brake.update(error, Ts, true);
+                    const double tc_output = pid_brake.get_output();
+                    if(lov_level_control_on) torque_wheel = std::min(0.0, std::max(torque_wheel, tc_output));
+                }
+                else if (wheel_speed < wheel_speed_brake_on)
+                {
+                    pid_brake.update(error, Ts, true);
+                    const double tc_output = pid_brake.get_output();
+                    if(lov_level_control_on) torque_wheel = std::min(0.0, std::max(torque_wheel,  tc_output));
+                    
+                }
+            }
+        };
+
+        // 4 koła -> 8 PIDów
+
+
+        tc_on_one_wheel(wheel_speed_fl_, tq_fl, tc_drive_fl_, tc_brake_fl_);
+        tc_on_one_wheel(wheel_speed_fr_, tq_fr, tc_drive_fr_, tc_brake_fr_);
+        tc_on_one_wheel(wheel_speed_rl_, tq_rl, tc_drive_rl_, tc_brake_rl_);
+        tc_on_one_wheel(wheel_speed_rr_, tq_rr, tc_drive_rr_, tc_brake_rr_);
+
+        // =========================================================
+        // accounting: TC active time (jeśli KTÓRYKOLWIEK PID aktywny)
         // =========================================================
         const bool tc_active_now =
-            traction_control_pid_drive_.is_active() ||
-            traction_control_pid_brake_.is_active();
+            tc_drive_fl_.is_active() || tc_brake_fl_.is_active() ||
+            tc_drive_fr_.is_active() || tc_brake_fr_.is_active() ||
+            tc_drive_rl_.is_active() || tc_brake_rl_.is_active() ||
+            tc_drive_rr_.is_active() || tc_brake_rr_.is_active();
 
         if (tc_active_now) {
-            time_tc_active_ += Ts;  // [s] czas aktywnego TC
+            time_tc_active_ += Ts;
         }
 
-        torque_command_to_invert_ = torque_temp;
+        // zapis do komend momentu 4WD
+        torque_cmd_fl_ = tq_fl;
+        torque_cmd_fr_ = tq_fr;
+        torque_cmd_rl_ = tq_rl;
+        torque_cmd_rr_ = tq_rr;
+
         return;
-     
     }
-    // SPEED_KMH: movement in km/h
-    // trapezoidal I
-    double error = static_cast<double>(last_input_read_by_dv_board.movement) - (wheel_speed_read_right + wheel_speed_read_left)/2 ;
-    prev_I_speed_pid += (error + prev_error_speed_pid) * 0.5 * Ts;
 
-    double u_pid =
-        P_.get("pid_speed_p") * error +
-        P_.get("pid_speed_i") * prev_I_speed_pid +
-        P_.get("pid_speed_d") * (error - prev_error_speed_pid) / Ts;
+    // =========================================================
+    // SPEED_KMH MODE (PID prędkości)
+    // =========================================================
+    {
+        // u Ciebie to jest w praktyce: target - wheel_speed_avg
+        const double wheel_speed_avg =
+            0.25 * (wheel_speed_fl_ + wheel_speed_fr_ + wheel_speed_rl_ + wheel_speed_rr_);
 
-    prev_error_speed_pid = error;
+        const double error = static_cast<double>(last_input_read_by_dv_board.movement) - wheel_speed_avg;
 
-    u_pid = std::clamp(u_pid, P_.get("pid_speed_min"), P_.get("pid_speed_max"));
+        prev_I_speed_pid_ += (error + prev_error_speed_pid_) * 0.5 * Ts;
 
-    // PID output -> torque
-    torque_command_to_invert_ = (u_pid * P_.get("max_torque")) / P_.get("pid_speed_scale");
+        double u_pid =
+            P_.get("pid_speed_p") * error +
+            P_.get("pid_speed_i") * prev_I_speed_pid_ +
+            P_.get("pid_speed_d") * (error - prev_error_speed_pid_) / Ts;
 
-    return;
+        prev_error_speed_pid_ = error;
+
+        u_pid = std::clamp(u_pid, P_.get("pid_speed_min"), P_.get("pid_speed_max"));
+
+        const double torque_total =
+            (u_pid *4* P_.get("max_torque")) / P_.get("pid_speed_scale");
+
+        // 4WD: rozdział 1/4
+        torque_cmd_fl_ = 0.25 * torque_total;
+        torque_cmd_fr_ = 0.25 * torque_total;
+        torque_cmd_rl_ = 0.25 * torque_total;
+        torque_cmd_rr_ = 0.25 * torque_total;
+
+        return;
+    }
 }
+
 
 double Simulation_lem_ros_node::random_noise_generator_() const {
     static thread_local std::mt19937 rng{std::random_device{}()};
@@ -904,9 +970,15 @@ void Simulation_lem_ros_node::publish_cones_gt_markers_()
     pub_markers_cones_gt_.publish(arr);
 }
 
-void Simulation_lem_ros_node::pub_full_state_(){
+void Simulation_lem_ros_node::pub_full_state_()
+{
     dv_interfaces::full_state msg;
-    Log_Info_full info = log_info_full(state_, Input(torque_command_to_invert_, steer_command_to_maxon_), P_, step_number_);
+    Log_Info_full info = log_info_full(
+        state_,
+        Input(torque_cmd_fl_, torque_cmd_fr_, torque_cmd_rl_, torque_cmd_rr_, steer_command_to_maxon_),
+        P_,
+        step_number_
+    );
 
     msg.time = info.time;
     msg.step_number = step_number_;
@@ -916,14 +988,25 @@ void Simulation_lem_ros_node::pub_full_state_(){
     msg.yaw = info.yaw;
     msg.yaw_rate = info.yaw_rate;
     msg.vx = info.vx;
-    
+
     msg.vy = info.vy;
     msg.ax = info.ax;
     msg.ay = info.ay;
 
-    msg.torque = info.torque;
-    msg.torque_left = info.torque_left;
-    msg.torque_right = info.torque_right;
+    // ==========================================================
+    // 4WD TORQUES (NA 4 KOŁA)
+    // ==========================================================
+    msg.torque_fl = info.torque_fl;
+    msg.torque_fr = info.torque_fr;
+    msg.torque_rl = info.torque_rl;
+    msg.torque_rr = info.torque_rr;
+
+
+    // ==========================================================
+    // OMEGI 4WD
+    // ==========================================================
+    msg.omega_fl = info.omega_fl;
+    msg.omega_fr = info.omega_fr;
     msg.omega_rl = info.omega_rl;
     msg.omega_rr = info.omega_rr;
 
@@ -961,24 +1044,39 @@ void Simulation_lem_ros_node::pub_full_state_(){
     msg.total_drag = info.total_drag;
     msg.total_downforce = info.total_downforce;
     msg.Power_total = info.Power_total;
-    msg.torque_request = info.torque_request;
 
     msg.step_dt = P_.get("simulation_time_step");
 
-    const double kappa_max_abs_signed =
-    (std::abs(msg.kappa_rr) > std::abs(msg.kappa_rl)) ? msg.kappa_rr : msg.kappa_rl;
+    // ==========================================================
+    // TOP SLIP RATIO: 4WD -> max abs kappa z 4 kół
+    // ==========================================================
+    const double kappa_max_abs_signed = [&]() -> double
+    {
+        double best = msg.kappa_fl;
+
+        if (std::abs(msg.kappa_fr) > std::abs(best)) best = msg.kappa_fr;
+        if (std::abs(msg.kappa_rl) > std::abs(best)) best = msg.kappa_rl;
+        if (std::abs(msg.kappa_rr) > std::abs(best)) best = msg.kappa_rr;
+
+        return best;
+    }();
 
     update_top_abs(ten_biggest_slip_ratio_, kappa_max_abs_signed, 10);
     update_top_abs(ten_biggest_beta_angle_, msg.slip_angle_body, 10);
 
-    const double beta_thresh = 9.0 ;
+    const double beta_thresh = 9.0;
     if (std::abs(msg.slip_angle_body) > beta_thresh) {
         time_beta_over_9_ += msg.step_dt;
     }
 
     pub_log_full_.publish(msg);
 
-     // ==========================================================
+
+
+
+    pub_log_full_.publish(msg); // <--- Twoja dotychczasowa publikacja
+
+    // ==========================================================
     // [NOWE] RYSOWANIE KROPLI G-G (MARKER)
     // ==========================================================
     visualization_msgs::Marker gg_sphere;
@@ -1011,8 +1109,8 @@ void Simulation_lem_ros_node::pub_full_state_(){
     gg_sphere.color.a = 1.0; 
 
     pub_gg_sphere_marker_.publish(gg_sphere);
-
-} 
+}
+ 
 void Simulation_lem_ros_node::publish_bolid_marker_()
 {
     if (!pub_marker_bolid_) {
@@ -1128,7 +1226,241 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
     update_top_abs(ten_biggest_epsi_, std::abs(msg->epsi_current));
 }
 
+Torque_allocation Simulation_lem_ros_node::allocate_torque_optimaly(double fx_target , double mz_target ){
+
+    // =========================================================
+    // PARAMETERS FOR WEIGHT DISTRIBUTION CALCULATION
+    const double m = P_.get("m");
+    const double g = P_.get("g");
+    const double w = P_.get("w");
+    const double a = P_.get("a");
+    const double b = P_.get("b");
+    const double t_front = P_.get("t_front");
+    const double t_rear  = P_.get("t_rear");
+    const double h = P_.get("h");
+    const double h_roll_f = P_.get("h1_roll");
+    const double h_roll_r = P_.get("h2_roll");
+
+    const double Kf = P_.get("K1");
+    const double Kr = P_.get("K2");
+    const double K_total = Kf + Kr;
+
+    const double mf = m * a / w;
+    const double mr = m * b / w;
+    const double h_prim_f = h - h_roll_f;
+    const double h_prim_r = h - h_roll_r;
+   
+    double ax_messured = last_imu_.ax;
+    double ay_messured = last_imu_.ay;
+    double vx = state_.vx;
+    double Fz_total = P_.get("m") * P_.get("g") + (P_.get("Cl1") + P_.get("Cl2")) * state_.vx * state_.vx;
+
+    double N_fl = 0.5 * mf * g - 0.5 * m * ax_messured * h / w
+                - ay_messured / t_front * ( mf * h_roll_f + Kf / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl1") * vx * vx;
+
+    double N_fr = 0.5 * mf * g - 0.5 * m *ax_messured * h / w
+                + ay_messured / t_front * ( mf * h_roll_f + Kf / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl1") * vx * vx;
+
+    double N_rl = 0.5 * mr * g + 0.5 * m * ax_messured * h / w
+                - ay_messured / t_rear * ( mr * h_roll_r + Kr / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl2") * vx * vx;
+
+    double N_rr = 0.5 * mr * g + 0.5 * m * ax_messured * h / w
+                + ay_messured / t_rear * ( mr * h_roll_r + Kr / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl2") * vx * vx;
+
+    const double FZ_MIN = 50.0;
+
+    N_fl = std::max(N_fl, FZ_MIN); // for numerical stability
+    N_fr = std::max(N_fr, FZ_MIN); // for numerical stability
+    N_rl = std::max(N_rl, FZ_MIN); // for numerical stability
+    N_rr = std::max(N_rr, FZ_MIN); // for numerical stability
+
+    // heurystic approach returned in case of solver failure/to test if better
+    Torque_allocation u_heuristic;
+    // distributing longitudinal force according to nor ;
+    u_heuristic.torque_fr = fx_target * N_fr / Fz_total * P_.get("R");
+    u_heuristic.torque_fl = fx_target * N_fl / Fz_total * P_.get("R");
+    u_heuristic.torque_rl = fx_target * N_rl / Fz_total * P_.get("R");
+    u_heuristic.torque_rr = fx_target * N_rr / Fz_total * P_.get("R");
+    // the distribution of mz according to the normal forces on axles
+    double mz_front = mz_target * (N_fl + N_fr) / Fz_total;
+    double mz_rear  = mz_target * (N_rr + N_rl) / Fz_total;
+    double d_f_front = mz_front / t_front;
+    double d_f_rear  = mz_rear / t_rear;
+    u_heuristic.torque_fl += -d_f_front * P_.get("R");
+    u_heuristic.torque_fr += +d_f_front * P_.get("R");
+    u_heuristic.torque_rl += -d_f_rear * P_.get("R"); ;
+    u_heuristic.torque_rr += +d_f_rear * P_.get("R"); ;
+    // Solving QP for allocationg torque to wheels to follow fx and mz targets with taking into account current weight distribution 
+    // using cholesky decomposition method
+    // u := [F_fl, F_fr, F_rl, F_rr]^T  (forces on wheels)
+    // u_hat := [Fx_target, Mz_target]^T
+    // J(u) = (G u - u_hat)^T Q (G u - u_hat) + u^T R u
+    //
+    // Optimality condition:
+    // (G^T Q G + R) u = G^T Q u_hat
+    // A u = c, where A := G^T Q G + R (SPD), c := G^T Q u_hat
+    //
+    // I solve with Cholesky: A = L L^T
+
+    //Cost params of QP
+
+    
+    const double lambda = P_.get("torque_allocation_lambda_factor");
+    const double Fx_ref = P_.get("torque_allocation_fx_ref");
+    const double Mz_ref = P_.get("torque_allocation_mz_ref");
+    Eigen::Matrix<double,2,4> G;
+    G << 1.0, 1.0, 1.0, 1.0,
+        -0.5*t_front, +0.5*t_front, -0.5*t_rear, +0.5*t_rear;
+
+    // =========================
+    // 2) Build Q (2x2), diag weights for tracking errors
+    //    Typical: qFx = 1/Fx_ref^2, qMz = 1/Mz_ref^2
+    // =========================
+    const double qFx = 1.0 / (Fx_ref * Fx_ref);
+    const double qMz = 1.0 / (Mz_ref * Mz_ref);
+
+    Eigen::Matrix2d Q = Eigen::Matrix2d::Zero();
+    Q(0,0) = qFx;
+    Q(1,1) = qMz;
+
+    Eigen::Matrix4d R = Eigen::Matrix4d::Zero();
+    const double r_fl = Fz_total/N_fl *qFx ;
+    const double r_fr = Fz_total/N_fr *qFx ;
+    const double r_rl = Fz_total/N_rl *qFx ;
+    const double r_rr = Fz_total/N_rr *qFx ;
+
+    R(0,0) = lambda*r_fl;
+    R(1,1) = lambda*r_fr;
+    R(2,2) = lambda*r_rl;
+    R(3,3) = lambda*r_rr;
+    // =========================
+    // 4) Build u_hat (2x1)
+    // =========================
+    Eigen::Vector2d u_hat;
+    u_hat << fx_target, mz_target;
+
+
+       // =========================
+    // 5) Build A and b:
+    //    A = G^T Q G + R
+    //    c = G^T Q u_hat
+    // =========================
+    Eigen::Matrix4d A = G.transpose() * Q * G + R;
+    Eigen::Vector4d c = G.transpose() * Q * u_hat;
+
+    // =========================
+    // 6) Solve A u = c using Cholesky (LLT)
+    // =========================
+    Eigen::LLT<Eigen::Matrix4d> llt(A);
+    if (llt.info() != Eigen::Success) {
+        return u_heuristic;
+    }
+    
+    Eigen::Vector4d u = llt.solve(c);
+    if (llt.info() != Eigen::Success || !u.allFinite()) {
+        return u_heuristic;
+    }
+
+    std::cout << "Torque allocation solution: " << u.transpose() << std::endl;
+    // std::cout << "Heuristic solution: " << u_heuristic.torque_fl / P_.get("R") << ", "
+    //                                     << u_heuristic.torque_fr / P_.get("R") << ", "
+    //                                     << u_heuristic.torque_rl / P_.get("R") << ", "
+    //                                     << u_heuristic.torque_rr / P_.get("R") << std::endl;
+    std::cout << "residual: " << (G * u - u_hat).transpose() << std::endl;
+    std::cout << "Weights (N): " << N_fl << ", " << N_fr << ", " << N_rl << ", " << N_rr << std::endl;
+
+    Torque_allocation torque_allocation_result;
+    torque_allocation_result.torque_fl = u(0) * P_.get("R");
+    torque_allocation_result.torque_fr = u(1) * P_.get("R");
+    torque_allocation_result.torque_rl = u(2) * P_.get("R");
+    torque_allocation_result.torque_rr = u(3) * P_.get("R");
+    
+    return torque_allocation_result ; // wheel torques in Nm
+    
+};
+
+Torque_allocation Simulation_lem_ros_node::allocate_torque_heuristically(double  fx_target , double mz_target ){
+
+     // =========================================================
+    // PARAMETERS FOR WEIGHT DISTRIBUTION CALCULATION
+    const double m = P_.get("m");
+    const double g = P_.get("g");
+    const double w = P_.get("w");
+    const double a = P_.get("a");
+    const double b = P_.get("b");
+    const double t_front = P_.get("t_front");
+    const double t_rear  = P_.get("t_rear");
+    const double h = P_.get("h");
+    const double h_roll_f = P_.get("h1_roll");
+    const double h_roll_r = P_.get("h2_roll");
+
+    const double Kf = P_.get("K1");
+    const double Kr = P_.get("K2");
+    const double K_total = Kf + Kr;
+
+    const double mf = m * a / w;
+    const double mr = m * b / w;
+    const double h_prim_f = h - h_roll_f;
+    const double h_prim_r = h - h_roll_r;
+   
+    double ax_messured = last_imu_.ax;
+    double ay_messured = last_imu_.ay;
+    double vx = state_.vx;
+    double Fz_total = P_.get("m") * P_.get("g") + (P_.get("Cl1") + P_.get("Cl2")) * state_.vx * state_.vx;
+
+    double N_fl = 0.5 * mf * g - 0.5 * m * ax_messured * h / w
+                - ay_messured / t_front * ( mf * h_roll_f + Kf / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl1") * vx * vx;
+
+    double N_fr = 0.5 * mf * g - 0.5 * m *ax_messured * h / w
+                + ay_messured / t_front * ( mf * h_roll_f + Kf / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl1") * vx * vx;
+
+    double N_rl = 0.5 * mr * g + 0.5 * m * ax_messured * h / w
+                - ay_messured / t_rear * ( mr * h_roll_r + Kr / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl2") * vx * vx;
+
+    double N_rr = 0.5 * mr * g + 0.5 * m * ax_messured * h / w
+                + ay_messured / t_rear * ( mr * h_roll_r + Kr / K_total * (mf * h_prim_f + mr * h_prim_r))
+                + 0.5 * P_.get("Cl2") * vx * vx;
+
+    const double FZ_MIN = 100.0;
+    double sumN = N_fl + N_fr + N_rl + N_rr;
+
+    N_fl = std::max(N_fl, FZ_MIN); // for numerical stability
+    N_fr = std::max(N_fr, FZ_MIN); // for numerical stability
+    N_rl = std::max(N_rl, FZ_MIN); // for numerical stability
+    N_rr = std::max(N_rr, FZ_MIN); // for numerical stability
+    
+
+    // heurystic approach returned in case of solver failure/to test if better
+    Torque_allocation u_heuristic;
+    // distributing longitudinal force according to nor ;
+    u_heuristic.torque_fr = fx_target * N_fr / Fz_total * P_.get("R");
+    u_heuristic.torque_fl = fx_target * N_fl / Fz_total * P_.get("R");
+    u_heuristic.torque_rl = fx_target * N_rl / Fz_total * P_.get("R");
+    u_heuristic.torque_rr = fx_target * N_rr / Fz_total * P_.get("R");
+    // the distribution of mz according to the normal forces on axles
+    double mz_front = mz_target * (N_fl + N_fr) / Fz_total;
+    double mz_rear  = mz_target * (N_rr + N_rl) / Fz_total;
+    double d_f_front = mz_front / t_front;
+    double d_f_rear  = mz_rear / t_rear;
+    u_heuristic.torque_fl += -d_f_front * P_.get("R");
+    u_heuristic.torque_fr += +d_f_front * P_.get("R");
+    u_heuristic.torque_rl += -d_f_rear * P_.get("R"); ;
+    u_heuristic.torque_rr += +d_f_rear * P_.get("R"); ;
+
+    return u_heuristic; // wheel torques in Nm
+}
+
+   
+
 }// namespace lem_dynamics_sim_
+
 
 
 

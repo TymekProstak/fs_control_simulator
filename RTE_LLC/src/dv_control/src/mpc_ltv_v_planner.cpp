@@ -102,7 +102,7 @@ static inline void dump_solution_maxima(ocp_nlp_config* nlp_config,
 
     // controls
     double max_abs_u_ddreq = 0.0;  // u[0]
-   // double max_abs_u_mz_tv = 0.0;  // u[1]
+    double max_abs_u_mz_tv = 0.0;  // u[1]
 
     // states
     double max_abs_ey = 0.0;
@@ -129,14 +129,14 @@ static inline void dump_solution_maxima(ocp_nlp_config* nlp_config,
             ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k, "u", uk);
 
             max_abs_u_ddreq = std::max(max_abs_u_ddreq, std::abs(uk[0]));
-            //max_abs_u_mz_tv = std::max(max_abs_u_mz_tv, std::abs(uk[1]));
+            max_abs_u_mz_tv = std::max(max_abs_u_mz_tv, std::abs(uk[1]));
         }
     }
 
     ROS_WARN_STREAM(std::fixed << std::setprecision(6)
         << "[MPC DIAG] maxima over horizon:"
         << " max|u_ddreq|=" << max_abs_u_ddreq
-        //<< " max|u_mz_tv|=" << max_abs_u_mz_tv
+        << " max|u_mz_tv|=" << max_abs_u_mz_tv
         << " max|ey|=" << max_abs_ey
         << " max|epsi|=" << max_abs_epsi
         << " max|vy|=" << max_abs_vy
@@ -201,7 +201,7 @@ static inline Eigen::Matrix<double, NX, 1> f_splitv_continuous(
     const double d_req   = x(6);
 
     const double u_ddreq = u(0);  // d(d_req)/dt
-    //const double u_mz_tv = u(1);  // yaw moment from torque vectoring
+    const double u_mz_tv = u(1);  // yaw moment from torque vectoring
 
     const double s_epsi  = std::sin(epsi);
     const double c_epsi  = std::cos(epsi);
@@ -228,8 +228,8 @@ static inline Eigen::Matrix<double, NX, 1> f_splitv_continuous(
     // vy_dot
     xdot(2) = (Fyf * c_delta + Fyr) / m - v_vehicle * r;
 
-    // r_do
-    xdot(3) = (lf * Fyf * c_delta - lr * Fyr) / Iz ;
+    // r_dot + torque vectoring yaw moment
+    xdot(3) = (lf * Fyf * c_delta - lr * Fyr) / Iz + (u_mz_tv / Iz);
 
     // steering actuator chain
     xdot(4) = d_delta;
@@ -379,7 +379,7 @@ void MPCInterface::reset_initial_guess_splitv_(const MPC_State& x0,
     const double current_epsi = x0.epsi;
 
     double x_traj[NX];
-    double u_zero[NU] = {0.0};
+    double u_zero[NU] = {0.0,0.0};
 
     double ey_pred = x0.ey;
 
@@ -501,6 +501,8 @@ void MPCInterface::calculate_continuous_jacobian_splitv_(
 
     // u = d(d_req)/dt
     Bc(6, 0) = 1.0;
+    // u(1) = Mz_tv -> r_dot += Mz_tv / Iz
+    Bc(3, 1) = 1.0 / Iz;
 }
 
 // ============================================================
@@ -618,6 +620,7 @@ void MPCInterface::set_cost_to_acados()
     W(3, 3)     = Q_r;
     W(4, 4)     = Q_delta;
     W(NX, NX)   = R_ddelta;
+    W(NX+1, NX+1) = R_tv;  
 
     const int ny_e = NX;
     Eigen::MatrixXd W_e = Eigen::MatrixXd::Zero(ny_e, ny_e);
@@ -694,7 +697,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
     if (!is_initialized_) {
         mpc_ltv_discrete_acados_reset(capsule_, 1);
         reset_initial_guess_splitv_(x0, v_vehicle_vec);
-        last_output.assign(N, Eigen::Matrix<double, NU, 1>::Zero());  
+        last_output.assign(N, Eigen::Matrix<double, NU, 1>::Zero());  // NU=2
         is_initialized_ = true;
     }
 
@@ -731,7 +734,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
             ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, i, "u", u_step_arr);
 
             Eigen::Matrix<double, NU, 1> u_step;
-            u_step << u_step_arr[0];
+            u_step << u_step_arr[0], u_step_arr[1];
             new_u_traj.push_back(u_step);
         }
 
@@ -745,8 +748,9 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
         last_output.push_back(new_u_traj.back());
 
         const double u_ddreq_final = new_u_traj[0](0);
+        const double u_mz_tv_final = new_u_traj[0](1);
 
-        if (!std::isfinite(u_ddreq_final)) {
+        if (!std::isfinite(u_ddreq_final) || !std::isfinite(u_mz_tv_final)) {
             ROS_ERROR("[MPC DIAG] Solver returned NaN/INF in first control!");
             dump_acados_solver_stats(nlp_solver_, status);
             dump_solution_maxima(nlp_config_, nlp_dims_, nlp_out_, N);
@@ -769,7 +773,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
             next_r = 0.0;
         }
 
-        return {u_ddreq_final, 0.0, true, next_r};
+        return {u_ddreq_final, u_mz_tv_final, true, next_r};
     }
 
     // ============================================================

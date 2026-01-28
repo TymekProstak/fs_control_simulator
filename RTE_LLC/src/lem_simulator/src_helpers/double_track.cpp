@@ -4,25 +4,48 @@ namespace lem_dynamics_sim_{
 
     State model_derative(const ParamBank& P, const  State& x, const Input& u) {
 
-
-
-
         double areo_drag = P.get("Cd") * x.vx * x.vx;
         double areo_downforce_front = P.get("Cl1") * x.vx * x.vx;
         double areo_downforce_rear  = P.get("Cl2") * x.vx * x.vx;
         double areo_downforce = areo_downforce_front + areo_downforce_rear;
         double rolling_resistance = P.get("Cr") * ( P.get("m") * P.get("g") + areo_downforce ) ;
 
-        double Fx_total = - x.fy_fl * sin(x.delta_left)   -  x.fy_fr * sin(x.delta_right) + x.fx_rl + x.fx_rr -  (areo_drag  + rolling_resistance)* ((x.vx == 0.0) ? 0 : static_cast<int>(std::copysign(1.0, x.vx)));
-        double Fy_total = x.fy_fl * cos(x.delta_left) + x.fy_fr * cos(x.delta_right) +  x.fy_rl + x.fy_rr;
-        double Mz = - P.get("t_front")/2 * (- x.fy_fl * sin(x.delta_left) )  + x.fy_fl * cos(x.delta_left) * P.get("a");
-        Mz += P.get("t_front")/2 * (- x.fy_fr* sin(x.delta_right) )  + x.fy_fr * cos(x.delta_right) * P.get("a");
-        Mz += -P.get("t_rear")/2 * x.fx_rl  - x.fy_rl * (P.get("b"));
-        Mz += P.get("t_rear")/2 * x.fx_rr + -  x.fy_rr * (P.get("b")); 
+        // Siły opon: fx_*, fy_* są w układzie koła.
+        // Transformacja do układu body dla osi przedniej (skręt), tył bez skrętu.
+        const double Fx_fl_b =  x.fx_fl * std::cos(x.delta_left)  - x.fy_fl * std::sin(x.delta_left);
+        const double Fy_fl_b =  x.fx_fl * std::sin(x.delta_left)  + x.fy_fl * std::cos(x.delta_left);
+        const double Fx_fr_b =  x.fx_fr * std::cos(x.delta_right) - x.fy_fr * std::sin(x.delta_right);
+        const double Fy_fr_b =  x.fx_fr * std::sin(x.delta_right) + x.fy_fr * std::cos(x.delta_right);
 
+        const double Fx_rl_b = x.fx_rl;
+        const double Fy_rl_b = x.fy_rl;
+        const double Fx_rr_b = x.fx_rr;
+        const double Fy_rr_b = x.fy_rr;
 
-        
-        
+        const double sgn_vx = (x.vx == 0.0) ? 0.0 : std::copysign(1.0, x.vx);
+        const double F_resist = (areo_drag + rolling_resistance) * sgn_vx;
+
+        const double Fx_total = Fx_fl_b + Fx_fr_b + Fx_rl_b + Fx_rr_b - F_resist;
+        const double Fy_total = Fy_fl_b + Fy_fr_b + Fy_rl_b + Fy_rr_b;
+
+        // Momenty od sił w układzie body: Mz = sum( r_x*F_y - r_y*F_x )
+        // Konwencja osi: x do przodu, y w lewo, dodatni yaw CCW.
+        const double a = P.get("a");
+        const double b = P.get("b");
+        const double tf2 = P.get("t_front") * 0.5;
+        const double tr2 = P.get("t_rear")  * 0.5;
+
+        // pozycje kół: (a, +-tf/2), (-b, +-tr/2)
+        double Mz = 0.0;
+        // FL
+        Mz += a * Fy_fl_b - (+tf2) * Fx_fl_b;
+        // FR
+        Mz += a * Fy_fr_b - (-tf2) * Fx_fr_b;
+        // RL
+        Mz += (-b) * Fy_rl_b - (+tr2) * Fx_rl_b;
+        // RR
+        Mz += (-b) * Fy_rr_b - (-tr2) * Fx_rr_b;
+
         State temp;
         temp.setZero();
 
@@ -34,12 +57,9 @@ namespace lem_dynamics_sim_{
         temp.vy = Fy_total / P.get("m") - x.vx * x.yaw_rate;
         temp.yaw_rate = Mz / P.get("Iz");
 
-
         // settin prev_ax and prev_ay for mass transfer model
         temp.prev_ax = (Fx_total / P.get("m") - x.prev_ax)/P.get("simulation_time_step") ;
         temp.prev_ay = ( Fy_total / P.get("m") - x.prev_ay)/P.get("simulation_time_step") ;
-
-
 
         temp += derative_steering(P,x,u);
         temp += derative_drivetrain(P,x,u);
@@ -99,10 +119,10 @@ namespace lem_dynamics_sim_{
         // usuwanie nieregularności przy małych prędkościach w rachunkach slipów - > niefizyczne tylko numeryczne : https://www.amazon.pl/Tire-Vehicle-Dynamics-Hans-Pacejka/dp/0080970168 strona z defincją Magic Fomrula
      
        // dodanie symetrczyności wbrew defjincji slipu z MF 5.2 by usunać niefizyczne zachowania przy bardzo małych prędkościach/ odwracaniu momentu obrotowego
-       double vx_rr_denom = std::max( std::max(std::abs(vx_rr) , std::abs(x.omega_rr *  P.get("R"))) ,std::abs( epsilon) ) ;
-       double vx_rl_denom = std::max( std::max(std::abs(vx_rl) , std::abs(x.omega_rl *  P.get("R"))) ,std::abs( epsilon) ) ;
-        double vx_fr_denom = std::max(std::abs(vx_fr) , epsilon) ;
-        double vx_fl_denom = std::max(std::abs(vx_fl)  , epsilon) ;
+       const double vx_rr_denom = std::max(std::max(std::abs(vx_rr), std::abs(x.omega_rr * P.get("R"))), std::abs(epsilon));
+       const double vx_rl_denom = std::max(std::max(std::abs(vx_rl), std::abs(x.omega_rl * P.get("R"))), std::abs(epsilon));
+       const double vx_fr_denom = std::max(std::max(std::abs(vx_fr), std::abs(x.omega_fr * P.get("R"))), std::abs(epsilon));
+       const double vx_fl_denom = std::max(std::max(std::abs(vx_fl), std::abs(x.omega_fl * P.get("R"))), std::abs(epsilon));
 
         double slip_angle_fr = x.delta_right - std::atan2(vy_fr,vx_fr_denom) ;
         double slip_angle_fl = x.delta_left  - std::atan2(vy_fl,vx_fl_denom) ;
@@ -111,10 +131,11 @@ namespace lem_dynamics_sim_{
 
         double slip_ratio_rr = (x.omega_rr * P.get("R") - vx_rr )/vx_rr_denom;
         double slip_ratio_rl = (x.omega_rl * P.get("R") - vx_rl) / vx_rl_denom;
-    
+        double slip_ratio_fr = (x.omega_fr * P.get("R") - vx_fr) / vx_fr_denom;
+        double slip_ratio_fl = (x.omega_fl * P.get("R") - vx_fl) / vx_fl_denom;
 
-        info.kappa_fl = 0.0 ; // przednie koła są beznapędowe
-        info.kappa_fr = 0.0; // przednie koła są beznapędowe
+        info.kappa_fl = slip_ratio_fl;
+        info.kappa_fr = slip_ratio_fr;
         info.kappa_rl = slip_ratio_rl;
         info.kappa_rr = slip_ratio_rr;
 
@@ -136,28 +157,29 @@ namespace lem_dynamics_sim_{
         info.fy_rl = x.fy_rl;
         info.fy_rr = x.fy_rr;
 
-        info.fx_fl =  0.0; // przednie koła są beznapędowe
-        info.fx_fr = 0.0; // przednie koła są beznapędowe
+        info.fx_fl = x.fx_fl;
+        info.fx_fr = x.fx_fr;
         info.fx_rl = x.fx_rl;
         info.fx_rr = x.fx_rr;
 
-        info.Power_total = (x.torque) * (x.omega_rr + x.omega_rl)/2 / 1000 ; // kW
+        info.Power_total = (x.torque_fl * x.omega_fl + x.torque_fr * x.omega_fr + x.torque_rl * x.omega_rl + x.torque_rr * x.omega_rr) / 1000.0;
 
-       
-
-        info.torque = x.torque;
-        info.torque_left = x.torque_left;
-        info.torque_right = x.torque_right;
+        info.torque_fl = x.torque_fl;
+        info.torque_fr = x.torque_fr;
+        info.torque_rl = x.torque_rl;
+        info.torque_rr = x.torque_rr;
 
         info.omega_rl = x.omega_rl;
         info.omega_rr = x.omega_rr;
+        info.omega_fl = x.omega_fl;
+        info.omega_fr = x.omega_fr;
 
         info.delta_left = x.delta_left * 180 / M_PI;
         info.delta_rigth = x.delta_right * 180 / M_PI;
         info.rack_angle = x.rack_angle * 180 / M_PI;
 
-        info.ax = x.prev_ax;
-        info.ay = x. prev_ay; 
+        info.ax = x.prev_ax; // because in g units i opozninoe o o jeden krok ale to nie szkoda
+        info.ay = x. prev_ay; // because in g units i opozninoe o o jeden krok ale to nie szkoda
 
         info.yaw_rate = x.yaw_rate;
         info.vx = x.vx;
@@ -166,7 +188,10 @@ namespace lem_dynamics_sim_{
         info.time = step_number * P.get("simulation_time_step");
 
         info.rack_angle_request = u.rack_angle_request * 180 / M_PI;
-        info.torque_request = u.torque_request;
+        info.torque_request_fl = u.torque_request_fl;
+        info.torque_request_fr = u.torque_request_fr;
+        info.torque_request_rl = u.torque_request_rl;
+        info.torque_request_rr = u.torque_request_rr;
         info.x = x.x;
         info.y = x.y;
         info.yaw = x.yaw;
@@ -177,43 +202,56 @@ namespace lem_dynamics_sim_{
 }
 
     void euler_sim_timestep(State& x, const Input& u, const ParamBank& P){
-
-        Input u_limited = u;
-        // power limiter 
-
-        // stałe z parametrów
-        const double T_min   = P.get("min_torque");    // np. -200
-        const double T_max   = P.get("max_torque");    // np.  200
-        const double P_rec   = P.get("P_min_recup");   // W, wartość ujemna / albo dodatnia jako "abs" – zależnie jak masz
-        const double P_drv   = P.get("P_max_drive");   // W
-
-        // bezpieczne prędkości kół (żeby nie dzielić przez 0)
-        const double omega_eps = 15.0;   // rad/s ~ 3 m/s dla R≈0.195..0.2 – dobierz pod siebie
-        double omega_rl_safe = std::max(std::abs(x.omega_rl), omega_eps);
-        double omega_rr_safe = std::max(std::abs(x.omega_rr), omega_eps);
-        double omega_sum     = std::abs(x.omega_rl) + std::abs(x.omega_rr);
-        double omega_sum_safe = std::max(omega_sum, 2.0*omega_eps);   // obie prawie stoją → użyj 2*eps
-
-      
-
-
-        double T_tot_min_pow = - std::abs(P_rec) / omega_sum_safe;  // cała oś
-        double T_tot_max_pow =   std::abs(P_drv) / omega_sum_safe;
-
-        double T_tot_min = std::max(-std::abs(T_min), T_tot_min_pow);
-        double T_tot_max = std::min(T_max, T_tot_max_pow);
-
-
-        u_limited.torque_request = std::clamp(u.torque_request, T_tot_min, T_tot_max);
-
-        
         double dt = P.get("simulation_time_step");
-        State dx = model_derative(P,x,u_limited);
+        State dx = model_derative(P,x,u);
         x += dx * dt;
         unwrap_angle(x.yaw);
-        // rack angle limiter 
 
-          if(x.d_rack_angle > P.get("max_steering_angle_rate")){
+        // === limits for power and steer (4 wheels) ===
+
+        const double T_min   = P.get("min_torque");    // total (sum)
+        const double T_max   = P.get("max_torque");    // total (sum)
+        const double P_rec   = P.get("P_min_recup");   // W (może być ujemne)
+        const double P_drv   = P.get("P_max_drive");   // W
+
+        // per-wheel (uproszczone 1/4)
+        const double T_min_w = 1 * T_min;
+        const double T_max_w = 1 * T_max;
+        const double P_rec_w = 0.25 * std::abs(P_rec);
+        const double P_drv_w = 0.25 * std::abs(P_drv);
+
+        const double omega_eps = 15.0; // rad/s
+
+        auto omega_safe = [&](double w){
+            return std::copysign(std::max(std::abs(w), omega_eps), (w == 0.0 ? 1.0 : w));
+        };
+
+        auto clampd = [](double v, double lo, double hi){
+            return (v < lo) ? lo : ((v > hi) ? hi : v);
+        };
+
+        auto limit_wheel_torque = [&](double torque, double omega){
+            const double om = omega_safe(omega);
+
+            // moment hard
+            const double Tmin_m = T_min_w;
+            const double Tmax_m = T_max_w;
+
+            // power (T = P/ω)
+            const double Tmin_p = -P_rec_w / om;
+            const double Tmax_p =  P_drv_w / om;
+
+            const double Tmin = std::min(Tmin_m, Tmin_p);
+            const double Tmax = std::max(Tmax_m, Tmax_p);
+            return clampd(torque, Tmin, Tmax);
+        };
+
+        x.torque_fl = limit_wheel_torque(x.torque_fl, x.omega_fl);
+        x.torque_fr = limit_wheel_torque(x.torque_fr, x.omega_fr);
+        x.torque_rl = limit_wheel_torque(x.torque_rl, x.omega_rl);
+        x.torque_rr = limit_wheel_torque(x.torque_rr, x.omega_rr);
+
+        if(x.d_rack_angle > P.get("max_steering_angle_rate")){
             x.d_rack_angle = P.get("max_steering_angle_rate");
             x.d_delta_left = P.get("max_steering_angle_rate");
             x.d_delta_right = P.get("max_steering_angle_rate");
@@ -247,6 +285,5 @@ namespace lem_dynamics_sim_{
     //     x += (dt/6) * (k1 + 2*k2 + 2*k3 + k4);
     //     unwrap_angle(x.yaw);
     // }
-
 
 }

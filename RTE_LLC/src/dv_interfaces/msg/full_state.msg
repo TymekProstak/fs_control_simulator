@@ -19,10 +19,14 @@ float32 ax
 float32 ay
 
 # --- Napęd i momenty ---
-float32 torque
-float32 torque_left
-float32 torque_right
-float32 torque_request
+float32 torque_rl
+float32 torque_rr
+float32 torque_fl
+float32 torque_fr
+float32 torque_request_rl   
+float32 torque_request_rr   
+float32 torque_request_fl   
+float32 torque_request_fr   
 
 # --- Prędkości kątowe kół ---
 float32 omega_rl

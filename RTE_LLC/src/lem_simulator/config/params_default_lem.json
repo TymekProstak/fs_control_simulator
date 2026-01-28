@@ -68,8 +68,8 @@
     "P_max_drive": 80000,
     "P_min_recup": -20000,
     "drivetrain_timescale": 0.025,
-    "max_torque" : 466.25,
-    "min_torque" : -466.25
+    "max_torque" : 250.14696,
+    "min_torque" : 250.14696
   },
 
   "steering_system": {
@@ -80,6 +80,7 @@
     "max_steer" : 0.4,
     "min_steer" : -0.4
   },
+
   "simulation": {
     "time_step": 0.001
   },
@@ -87,8 +88,8 @@
     "dv_board": {                          
     "dv_board_to_maxon_time_step": 0.01,
     "control_to_dv_boad_read_time_step": 0.005,
-    "wheel_encoder_reading_time_step": 0.025,
-    "dv_board_tractive_system_time_step": 0.025,
+    "wheel_encoder_reading_time_step": 0.005,
+    "dv_board_tractive_system_time_step": 0.005,
     "pid_speed_p": 1500.0,
     "pid_speed_i": 450.0,
     "pid_speed_d": 10.0,
@@ -98,10 +99,10 @@
     "pid_traction_p": 2000.0,
     "pid_traction_i": 5000.0,
     "pid_traction_d": 0.0,
-    "pid_traction_max_drive": 233.12,
+    "pid_traction_max_drive": 250.1,
     "pid_traction_min_drive": 0.0,
     "pid_traction_max_brake": 0.0,
-    "pid_traction_min_brake": -233.12,
+    "pid_traction_min_brake": -250.1,
     "pid_traction_anti_windup_gain_drive": 3.0,
     "pid_traction_anti_windup_gain_brake": 3.0,
     "pid_traction_leak_time_scale_drive": 1.0,
@@ -111,10 +112,13 @@
     "slip_drive_on": 0.16,
     "slip_drive_off": 0.12,
     "slip_brake_on": -0.16,
-    "slip_brake_off": -0.12
+    "slip_brake_off": -0.12,
+    "torque_allocation_lambda_factor": 0.075,
+    "torque_allocation_fx_ref": 1000.0,
+    "torque_allocation_mz_ref": 10.0
   },
 
-  "pose": {
+"pose": {
     "pose_noise": 0.05,
     "orientation_noise": 0.003,
     "rotation_noise": 0.01,

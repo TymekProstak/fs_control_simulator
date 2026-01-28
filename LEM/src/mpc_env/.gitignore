@@ -1,5 +1,0 @@
-# Ignoruj wszystko w bieżącym folderze
-*
-
-# Wyjątki (jeśli chcesz zachować np. plik .gitignore)
-!.gitignore

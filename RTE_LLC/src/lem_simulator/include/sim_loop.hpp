@@ -24,7 +24,6 @@
 #include "dv_interfaces/Cones.h"
 #include "dv_interfaces/full_state.h"
 
-
 #include <string>
 #include <deque>
 #include <optional>
@@ -38,6 +37,7 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <dv_interfaces/MPCDebug.h>
+
 //// ===========================================================================
 ///  Symulator LEM Dynamics + ROS
 ///  - obsługa wejść sterujących
@@ -47,13 +47,11 @@
 
 namespace lem_dynamics_sim_ {
 
-    
-
 //// ===========================================================================
 //  Helpery do kolorowania markerów stożków
 static std_msgs::ColorRGBA color_from_class_gt(const std::string& cls, float alpha = 0.95f)
 {
-    std_msgs::ColorRGBA c; 
+    std_msgs::ColorRGBA c;
     c.a = alpha;
 
     if (cls == "yellow" || cls == "Y") {
@@ -68,7 +66,7 @@ static std_msgs::ColorRGBA color_from_class_gt(const std::string& cls, float alp
     else {
         c.r = 0.6f; c.g = 0.6f; c.b = 0.6f;
     }
-   
+
     return c;
 }
 
@@ -77,14 +75,13 @@ static std_msgs::ColorRGBA color_from_class_vision(const std::string& cls, float
     std_msgs::ColorRGBA c;
     c.a = alpha;
 
-    if (cls == "yellow")      { c.r = 1.0f; c.g = 1.0f; c.b = 0.0f; }      // czysty żółty
-    else if (cls == "blue")   { c.r = 0.0f; c.g = 0.3f; c.b = 1.0f; }      // nasycony niebieski
-    else if (cls == "orange") { c.r = 1.0f; c.g = 0.55f; c.b = 0.0f; }     // żywy pomarańcz
-    else                      { c.r = 0.7f; c.g = 0.7f; c.b = 0.7f; }      // neutralny szary
+    if (cls == "yellow")      { c.r = 1.0f; c.g = 1.0f; c.b = 0.0f; }
+    else if (cls == "blue")   { c.r = 0.0f; c.g = 0.3f; c.b = 1.0f; }
+    else if (cls == "orange") { c.r = 1.0f; c.g = 0.55f; c.b = 0.0f; }
+    else                      { c.r = 0.7f; c.g = 0.7f; c.b = 0.7f; }
 
     return c;
 }
-
 
 //// ===========================================================================
 
@@ -99,27 +96,21 @@ static visualization_msgs::Marker make_cone_marker(
     m.header.stamp    = ros::Time::now();
     m.ns   = "cones";
     m.id   = id;
-    m.type = visualization_msgs::Marker::CYLINDER; // stożek jako cylinder
+    m.type = visualization_msgs::Marker::CYLINDER;
     m.action = visualization_msgs::Marker::ADD;
 
-    // --- pozycja i orientacja ---
     m.pose.position.x = x;
     m.pose.position.y = y;
-    m.pose.position.z = z + 0.18;  // podniesienie o połowę wysokości
-    m.pose.orientation.x = 0.0;
-    m.pose.orientation.y = 0.0;
-    m.pose.orientation.z = 0.0;
+    m.pose.position.z = z + 0.18;
     m.pose.orientation.w = 1.0;
 
-    // --- rozmiar stożka ---
     m.scale.x = 0.28;
     m.scale.y = 0.28;
     m.scale.z = 0.36;
 
-    // --- kolor i czas życia ---
     m.color = col;
     m.lifetime = lifetime;
-    m.frame_locked = false; // nie przypinaj do TF – Foxglove sam zaktualizuje
+    m.frame_locked = false;
 
     return m;
 }
@@ -136,12 +127,32 @@ struct INS_data {
     double yaw_rate{};
 };
 
+struct Torque_allocation {
+    double torque_fl{};
+    double torque_fr{};
+    double torque_rl{};
+    double torque_rr{};
+    
+    void* to_array(double* data) const {
+        data[0] = torque_fl;
+        data[1] = torque_fr;
+        data[2] = torque_rl;
+        data[3] = torque_rr;
+        return nullptr;
+    }
+    void to_eigen(Eigen::Matrix<double, 4, 1>& vec) const {
+        vec(0) = torque_fl;
+        vec(1) = torque_fr;
+        vec(2) = torque_rl;
+        vec(3) = torque_rr;
+    }
+};
 
 //// ===========================================================================
 //  Klasa główna symulatora ROS
 //// ===========================================================================
-class Simulation_lem_ros_node {
-
+class Simulation_lem_ros_node
+{
     // ===== tick phases (0..period-1) =====
     int phase_camera_shoot_          = 0;
     int phase_wheel_encoder_reading_ = 0;
@@ -151,12 +162,11 @@ class Simulation_lem_ros_node {
     int phase_gps_speed_reading_     = 0;
     int phase_control_input_read_    = 0;
 
-// RNG do losowania faz (stałe na start symulacji)
-std::mt19937 phase_rng_{std::random_device{}()};
+    // RNG do losowania faz (stałe na start symulacji)
+    std::mt19937 phase_rng_{std::random_device{}()};
 
-// helper do losowania fazy
-int pick_phase_(int period);
-
+    // helper do losowania fazy
+    int pick_phase_(int period);
 
 public:
     Simulation_lem_ros_node(ros::NodeHandle& nh,
@@ -170,32 +180,36 @@ public:
     void step();
 
     // ====== Dostęp do stanu ======
-    State get_state() { return state_; }
-    ParamBank get_parameters() { return P_; }
-    int get_step_number() { return step_number_; }
+    State get_state() const;
+    ParamBank get_parameters() const;
+    int get_step_number() const;
 
     // ====== ROS callback ======
     void dv_control_callback(const dv_interfaces::Control::ConstPtr& msg);
+
 private:
     //// =======================================================================
     //  Logowanie danych do csv nt metryk jazdy
     //// =======================================================================
     std::string metrics_log_file_path_;
     void log_metric_of_ride_data_();
-    double ey_avg_; // average lateral error along the track
-    double epsi_avg_; // average heading error along the track
-    double vs_avg_;  // average speed along the track
+
+    double ey_avg_   = 0.0;
+    double epsi_avg_ = 0.0;
+    double vs_avg_   = 0.0;
+
     std::vector<double> ten_biggest_slip_ratio_;
     std::vector<double> ten_biggest_beta_angle_;
     std::vector<double> ten_biggest_ey_;
     std::vector<double> ten_biggest_epsi_;
-    double percetage_of_time_beta_over_9_;
-    double percetage_of_time_tc_active_;
-    double time_tc_active_ = 0.0;
-    double time_beta_over_9_ = 0.0;
+
+    double percetage_of_time_beta_over_9_ = 0.0;
+    double percetage_of_time_tc_active_   = 0.0;
+
+    double time_tc_active_    = 0.0;
+    double time_beta_over_9_  = 0.0;
 
     ros::Subscriber sub_mpc_debug_;
-
     void mpc_debug_callback_(const dv_interfaces::MPCDebug::ConstPtr& msg);
 
     //// =======================================================================
@@ -210,7 +224,7 @@ private:
     ros::Publisher  pub_pose_ins_;
     ros::Publisher  pub_log_full_;
     ros::Publisher  pub_marker_bolid_;
-    ros::Publisher  pub_gg_sphere_marker_;
+    ros::Publisher pub_gg_sphere_marker_;
     tf2_ros::TransformBroadcaster tf_br_;
 
     //// =======================================================================
@@ -220,23 +234,48 @@ private:
     State     state_;
     Track     track_global_;
 
-    PIDController traction_control_pid_drive_;
-    PIDController traction_control_pid_brake_;
+    // ============================================================
+    // 4WD traction control:
+    // 8 PID kontrolerów:
+    //  - drive / brake osobno na każde koło
+    // ============================================================
+    PIDController tc_drive_fl_;
+    PIDController tc_drive_fr_;
+    PIDController tc_drive_rl_;
+    PIDController tc_drive_rr_;
 
+    PIDController tc_brake_fl_;
+    PIDController tc_brake_fr_;
+    PIDController tc_brake_rl_;
+    PIDController tc_brake_rr_;
 
-    double wheel_speed_read_right = 0.0; // ostatnia odczytana prędkość z enkodera kół na prawym kole (w m/s)
-    double wheel_speed_read_left = 0.0; // ostatnia odczytana prędkość z enkodera kół na prawym kole (w m/s)
+    // ============================================================
+    // Odczyt prędkości kół (m/s) - osobno na każde koło
+    // ============================================================
+    double wheel_speed_fl_ = 0.0;
+    double wheel_speed_fr_ = 0.0;
+    double wheel_speed_rl_ = 0.0;
+    double wheel_speed_rr_ = 0.0;
 
-    double prev_I_speed_pid = 0.0; // poprzednia wartość całki w PID prędkości
-    double prev_error_speed_pid = 0.0; // poprzedni błąd w PID prędkości
+    // PID prędkości (speed_mode)
+    double prev_I_speed_pid_ = 0.0;
+    double prev_error_speed_pid_ = 0.0;
 
-    double torque_command_to_invert_ = 0.0; // actual torque sent to tractive system
-    double steer_command_to_maxon_ = 0.0; // actual steer sent to steering actuator
+    // ============================================================
+    // Komendy momentu (4WD) - osobno na każde koło
+    // ============================================================
+    double torque_cmd_fl_ = 0.0;
+    double torque_cmd_fr_ = 0.0;
+    double torque_cmd_rl_ = 0.0;
+    double torque_cmd_rr_ = 0.0;
 
-    dv_interfaces::Control last_input_cached; // last input on control topic, cached for dv board reading
-    dv_interfaces::Control  last_input_read_by_dv_board; // last input read by dv board (at fixed cadence)
+    // Steering nadal jedna komenda
+    double steer_command_to_maxon_ = 0.0;
 
-     //// =======================================================================
+    dv_interfaces::Control last_input_cached;
+    dv_interfaces::Control last_input_read_by_dv_board;
+
+    //// =======================================================================
     //  INS, kolejki kamer, dane
     //// =======================================================================
     Track    track_to_be_published_;
@@ -249,32 +288,28 @@ private:
     int step_of_wheel_encoder_reading_ = 0;
     int step_of_ins_reading_           = 0;
     int step_gps_speed_reading_        = 0;
-    // DV_BOARD_READ cadence (board czyta wejście z ROS)
+
     int step_of_control_input_read_ = 0;
-
-    // board -> steering actuator cadence (board wysyła steering)
     int step_of_steer_input_sending_ = 0;
-
-    // board -> tractive system cadence (board wysyła torque) + na tym samym ticku liczę PID
     int step_number_torque_input_sending_ = 0;
-    int step_imu_reading_           = 0;
-    
+    int step_imu_reading_ = 0;
+
     int last_frame_size_ = 0;
 
-
-    GpsMeasurement last_gps_{};
+    GpsMeasurement last_gps_{0.0, 0.0, 0.0,0.0,0.0};
     bool has_last_gps_ = false;
-    ImuMeasurement last_imu_{}; 
-    bool has_last_imu_ = false;
-    double sim_b_g  = 0.0; // gyro bias
-    double sim_b_ax = 0.0; // acc x bias
-    double sim_b_ay = 0.0; // acc y bias
-    std::string ins_mode_ = "gauss"; // "gauss" or "kalman" -> tryb ins
-    bool lov_level_control_on = false;
-    int sim_time = -1; // domyślnie nieskończony czas symulacji
-    KalmanFilter kalman_filter_;
 
-    
+    ImuMeasurement last_imu_{0.0, 0.0, 0.0};
+    bool has_last_imu_ = false;
+
+    double sim_b_g  = 0.0;
+    double sim_b_ax = 0.0;
+    double sim_b_ay = 0.0;
+
+    std::string ins_mode_ = "gauss";
+    bool lov_level_control_on = false;
+    int sim_time = -1;
+    KalmanFilter kalman_filter_;
 
     struct CameraTask {
         int   ready_step;
@@ -286,8 +321,6 @@ private:
     //// =======================================================================
     //  Pomocnicze funkcje symulacyjne
     //// =======================================================================
-
-    // helpers do losowania opóźnień
     double random_noise_generator_() const;
     void compute_step_intervals_from_params_();
     double sample_vision_exec_time_() const;
@@ -305,11 +338,10 @@ private:
     void read_control_by_dv_board_if_due();
     void read_steer_by_orin_if_due_();
 
-    // aplikacja z dv_board do aktuatorów i obrót wizji 
+    // aplikacja z dv_board do aktuatorów i obrót wizji
     void shoot_camera_or_enqueue_if_due_();
-    void send_to_ts_if_due();
+    void send_to_ts_if_due();  // <-- tutaj wewnątrz będzie 4WD TC i ustawienie torque_cmd_*
 
-    // Kompatybilność: w step() jest wywołanie send_steer_to_maxon_if_due_() -> dlatego że obecnie od razu jak orin czyta to wysła do
     inline void send_steer_to_maxon_if_due_() { read_steer_by_orin_if_due_(); }
 
     // publikacja TF i markerów bolidu
@@ -317,6 +349,10 @@ private:
     void publish_bolid_tf_true();
     void pub_full_state_();
     void publish_bolid_marker_();
+
+    Torque_allocation allocate_torque_optimaly(double  fx_target , double mz_target );
+    Torque_allocation allocate_torque_heuristically(double  fx_target , double mz_target );
+
 };
 
 } // namespace lem_dynamics_sim_

@@ -842,7 +842,8 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
     double jerk_down,
     double a0_along,
     int merge_iter,
-    const ParamBank& P)
+    const ParamBank& P
+)
 {
     SpeedProfileGeom prof;
     prof.s0 = s0;
@@ -899,8 +900,8 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
             v, a, is_valid);
     }
 
-    const double smooth_jerk_up = jerk_up * 1.0/P.get("vel_planner_smoothing_factor");
-    const double smooth_jerk_down = jerk_down * 1.0/P.get("vel_planner_smoothing_factor");
+    const double smooth_jerk_up = jerk_up * 1.0/P.get("vel_planner_final_jerk_smooth_factor");
+    const double smooth_jerk_down = jerk_down * 1.0/P.get("vel_planner_final_jerk_smooth_factor");
     final_jerkForwardClamp(
         prof.kappa, vsat,
         ds_geom,
@@ -1093,7 +1094,7 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
         j_max,
         a0_along,
         merge_iter,
-        P
+         P
     );
 
     if (prof.v.size() < 2) {

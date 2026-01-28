@@ -47,7 +47,7 @@ R_d_delta = float(cfg["mpc"]["cost"]["R_ddelta"])
 
 
 NX = 7
-NU = 1 # d_delta_request
+NU = 2 # d_delta_request, torque_vectoring
 
 print("Używam parametrów MPC:")
 print(f"N = {N}")
@@ -160,14 +160,16 @@ def create_ocp_solver():
     ocp.constraints.ubx = np.array([delta_max])
 
     # ===== wejścia: constraints na oba u[0] i u[1] =====
-    ocp.constraints.idxbu = np.array([0], dtype=int)
+    ocp.constraints.idxbu = np.array([0, 1], dtype=int)
 
     ocp.constraints.lbu = np.array([
-        ddelta_min  # dla u[0]
+        ddelta_min,   # dla u[0]
+        torque_vectoring_min        # dla u[1]
     ], dtype=float)
 
     ocp.constraints.ubu = np.array([
-        ddelta_max   # dla u[0]
+        ddelta_max,   # dla u[0]
+        torque_vectoring_max        # dla u[1]
     ], dtype=float)
 
 

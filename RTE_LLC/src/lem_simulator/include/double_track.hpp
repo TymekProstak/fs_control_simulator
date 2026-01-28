@@ -18,16 +18,22 @@ namespace lem_dynamics_sim_{
         double y; // m
         double yaw; // rad
 
-        double torque; // Nm
         double rack_angle; // deg
 
-        
+        // 4x4 slip ratios
+        double kappa_fl; // nondim
+        double kappa_fr; // nondim
         double kappa_rl; // nondim
         double kappa_rr; // nondim
 
         double time; // s
         double rack_angle_request; // deg
-        double torque_request; // Nm
+
+        // 4 torque requests
+        double torque_request_fl; // Nm
+        double torque_request_fr; // Nm
+        double torque_request_rl; // Nm
+        double torque_request_rr; // Nm
 
         double ax; // g units
         double ay; // g units
@@ -64,10 +70,15 @@ namespace lem_dynamics_sim_{
         double fx_rl; // N
         double fx_rr; // N
 
-        double torque; // Nm
-        double torque_left; // Nm
-        double torque_right; // Nm
+        // per-wheel torques
+        double torque_fl; // Nm
+        double torque_fr; // Nm
+        double torque_rl; // Nm
+        double torque_rr; // Nm
 
+        // wheel speeds
+        double omega_fl; // rad/s
+        double omega_fr; // rad/s
         double omega_rl; // rad/s
         double omega_rr; // rad/s
 
@@ -88,7 +99,12 @@ namespace lem_dynamics_sim_{
         double Power_total; // kW
 
         double rack_angle_request; // deg
-        double torque_request; // Nm
+
+        // per-wheel torque requests
+        double torque_request_fl; // Nm
+        double torque_request_fr; // Nm
+        double torque_request_rl; // Nm
+        double torque_request_rr; // Nm
 
         double time; // s
 
@@ -103,7 +119,7 @@ namespace lem_dynamics_sim_{
     State model_derative(const ParamBank& P, const  State& x, const Input& u);
     Log_Info_full log_info_full(const State& x, const Input& u, const ParamBank& P , int step_number);
     void rk4_sim_timestep(State& x, const Input& u, const ParamBank& P);
-    void euler_sim_timestep(State& x, const  Input& u, const ParamBank& P);
+    void euler_sim_timestep(State& x, const Input& u, const ParamBank& P);
 
 
 } // namesapce lem_dynamis_sim_

@@ -179,7 +179,7 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
     if (eligible_path)
     {
         // gałąź sterowanie MPC
-        if(  all_path_recived &&  current_state.vx> 2.0)
+        if(  all_path_recived &&  current_state.vx> 1.0)
         //if(false)
         {
             convert_state_to_mpc_state();
@@ -188,7 +188,7 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
             if (mpc_return.success)
             {
                 last_ddelta_opt_from_mpc = mpc_return.ddelta_opt;
-                last_mtv_opt_from_mpc = 0.0;
+                last_mtv_opt_from_mpc = mpc_return.mtv_opt;
                 next_target_yaw_rate_from_mpc = mpc_return.next_yaw_rate;
 
                 double d_delta_request     = last_ddelta_opt_from_mpc / param_.get("odom_frequency"); // przekształcenie z mpc pochodnej do zmiany na krok
@@ -198,7 +198,7 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
                 mpc_state.delta_request = delta_request;
                 double aceleration_request = ref_path.acceleration_ref(0);
                 const double torque_request = acc_to_throttle_percentage(aceleration_request);
-                publishControlCommand(delta_request,torque_request, 0.0);
+                publishControlCommand(delta_request,torque_request, last_mtv_opt_from_mpc);
                 publishReferencePath(ref_path.X_ref, ref_path.Y_ref);
                 ZOH_for_steering();
                 //ROS_WARN_STREAM("[MPC]");
@@ -232,8 +232,8 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
     double dt_ms = (t_end - t_start).toSec() * 1000.0;
     double dt_us = (t_end - t_start).toSec() * 1e6;
 
-    //    ROS_INFO_STREAM("[Callback] odometryCallback duration: "
-    //                  << dt_ms << " ms " );
+       ROS_INFO_STREAM("[Callback] odometryCallback duration: "
+                     << dt_ms << " ms " );
 }
 
 
@@ -302,7 +302,7 @@ void Controller::publishControlCommand(double steering_angle,double torque_reque
     
         controlMsg.move_type = dv_interfaces::Control::TORQUE_PERCENTAGE;
         controlMsg.serviceBrake = 0;
-        controlMsg.fx_target = torque_request/100*param_.get("model_max_motor_torque")/param_.get("model_wheel_radius");         
+        controlMsg.fx_target = torque_request/100*4*param_.get("model_max_motor_torque")/param_.get("model_wheel_radius")*param_.get("model_m");         
         controlMsg.mz_target =  mtv;
 
         controlMsg.current_speed = static_cast<float>(current_state.vx);
@@ -438,7 +438,7 @@ pub_ref_path.publish(m); // <-- używamy osobnego topica
 void Controller::ZOH_for_steering()
 {
     double max_speed = param_.get("model_max_steering_angle_rate"); // rad/s
-    double dt = 1.0 / param_.get("odom_frequency"); 
+    double dt = 1.0 / param_.get("odom_frequency"); // ok. 0.0333 s dla 30 Hz
 
     double old_delta   = mpc_state.delta;
     double old_d_delta = mpc_state.d_delta;
@@ -495,7 +495,7 @@ double Controller::acc_to_throttle_percentage(double a_desired)
     //std::cout<< "ACC:"<<a_desired<<std::endl;
     double vehicle_mass = param_.get("model_m");
     double wheel_radius = param_.get("model_wheel_radius");
-    double max_motor_torque =  param_.get("model_max_motor_torque");
+    double max_motor_torque = 4* param_.get("model_max_motor_torque");
     const double drag_force = param_.get("model_Cd") * current_state.vx * current_state.vx + 
                               param_.get("model_rolling_resistance_coeff") * vehicle_mass * 9.81;
    // a_desired += drag_force / vehicle_mass; // uwzględnienie oporów ruchu
@@ -504,10 +504,14 @@ double Controller::acc_to_throttle_percentage(double a_desired)
     double torque_required = F_required * wheel_radius; // Moment obrotowy wymagany na kołach
 
     // Przekształcenie momentu obrotowego na sygnał sterujący przepustnicą (-1.0 - 1.0) -> percentage of all torque
+    std::cout<< "TORQUE REQ:"<<torque_required<<std::endl;
+    std::cout<< "MAX TORQUE:"<<max_motor_torque<<std::endl;
+    std::cout << "throthle percatege calc: " << torque_required / max_motor_torque*100.0 << std::endl;
     double throttle_command = torque_required / max_motor_torque*100.0;
 
     throttle_command = std::clamp(throttle_command, -100.0, 100.0);
     current_state.acc = a_desired;
+    //std::cout<< "THROTTLE:"<<throttle_command<<std::endl;
 
     return throttle_command;
 }

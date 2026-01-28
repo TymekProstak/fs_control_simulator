@@ -1,12 +1,13 @@
 <launch>
   <!-- Launch argument: INS mode (gauss|kalman). Domyślnie gauss. -->
   <arg name="ins_mode" default="gauss"/>
+  <arg name="low_level_controlers" default="false"/>
+
 
   <!-- Czas trwania symulacji [s]
        sim_time < 0  -> pętla nieskończona
        sim_time >= 0 -> symulacja kończy się po tym czasie -->
   <arg name="sim_time" default="-1"/>
-  <arg name="low_level_controlers" default="false"/>
 
   <!-- Pierwszy node: symulacja -->
   <node pkg="lem_simulator"
