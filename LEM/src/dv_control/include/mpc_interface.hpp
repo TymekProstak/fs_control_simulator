@@ -95,7 +95,7 @@ namespace v2_control
                          const Eigen::VectorXd &curvature_ref,
                          const Eigen::VectorXd &velocity_ref,
                          const Eigen::VectorXd &acceleration_ref,
-                        double vx0_body);
+                         double vx0_body);
 
     private:
         // Common helpers
@@ -104,6 +104,9 @@ namespace v2_control
         void reset_initial_guess(const MPC_State& x0,
         const std::vector<double>& vref_vec);
 
+        void reset_initial_guess(const MPC_State& x0,
+                                 double v_ref0);
+
         void set_cost_to_acados();
 
         // LTV path (SPLIT-V): v_path + v_vehicle[k]
@@ -111,6 +114,11 @@ namespace v2_control
                                             const std::vector<double>& kappa_vec,
                                             const std::vector<double>& v_path_vec,
                                             const std::vector<double>& v_vehicle_vec);
+        void ltv_matrixes_to_acados(const MPC_State& x0,
+                                     const std::vector<double>& kappa_vec,
+                                     const std::vector<double>& vref_vec);
+
+        
 
         // Jacobian (SPLIT-V)
         void calculate_continuous_jacobian_splitv_(
@@ -119,6 +127,14 @@ namespace v2_control
             double v_vehicle,
             Eigen::Matrix<double, NX, NX>& Ac,
             Eigen::Matrix<double, NX, NU>& Bc);
+
+
+    // Jacobian frozen dynamics
+    void calculate_continuous_jacobian(
+        const Eigen::Matrix<double, NX, 1>& x,
+        double v_ref0,
+        Eigen::Matrix<double, NX, NX>& Ac,
+        Eigen::Matrix<double, NX, NU>& Bc);
 
         // Stubs
         void print_problem_debug(const Eigen::Matrix<double, NX, NX> &Ad,

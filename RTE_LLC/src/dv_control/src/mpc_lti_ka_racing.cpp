@@ -96,6 +96,9 @@ MPCInterface::~MPCInterface()
 // =====================================
 // RESET INITIAL GUESS (zgodnie z HPP)
 // - wpycham x0 w cały horyzont + u=0
+// UWAGA: teraz mamy 2 zmienne decyzyjne:
+//   u[0] = d(d_req)/dt
+//   u[1] = mtv = torque vectoring yaw moment (Mz_tv)
 // =====================================
 void MPCInterface::reset_initial_guess(const MPC_State& x0,
                                        const std::vector<double>& vref_vec)
@@ -172,7 +175,7 @@ void MPCInterface::build_lti_continuous_matrices(
     Bc(6, 0) = 1.0;
 
     // u[1] = Mz_tv -> r_dot += Mz_tv / Iz
-    Bc(3, 1) = 1.0 / Iz;
+    if (NU > 1) Bc(3, 1) = 1.0 / Iz;
 }
 
 // ============================================================
@@ -237,8 +240,16 @@ void MPCInterface::set_cost_to_acados()
 
     const double R_ddelta = param_.get("mpc_cost_R_ddelta");
 
-    // MTV kara — ustawiam małą (żeby było "prawie za darmo", ale stabilnie)
-    const double R_mtv = param_.get("mpc_cost_R_mtv");
+    // Teraz mamy 2 zmienne decyzyjne: u=[ddelta, mtv]
+    // Waga na mtv: preferowane z ParamBanku, fallback na małe >0
+    double R_mtv = 1e-3;
+    if (NU > 1) {
+        try {
+            R_mtv = param_.get("mpc_cost_R_tv");
+        } catch (...) {
+            ROS_WARN("[MPC] Param mpc_cost_R_mtv missing -> using fallback R_mtv=1e-3");
+        }
+    }
 
     const double term_scale = 1.0;
 
@@ -247,10 +258,11 @@ void MPCInterface::set_cost_to_acados()
 
     W(0, 0) = Q_y;
     W(1, 1) = Q_psi;
-    W(3, 3) = Q_r;       
+    W(3, 3) = Q_r;
+
     // input weights: u[0], u[1]
     W(NX + 0, NX + 0) = R_ddelta;
-    W(NX + 1, NX + 1) = R_mtv;
+    if (NU > 1) W(NX + 1, NX + 1) = R_mtv;
 
     const int ny_e = NX;
     Eigen::MatrixXd W_e = Eigen::MatrixXd::Zero(ny_e, ny_e);
@@ -314,7 +326,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
         ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, 0, "u", u0);
 
         const double ddelta_opt = u0[0];
-        const double mtv_opt    = u0[1];
+        const double mtv_opt    = (NU > 1) ? u0[1] : 0.0;
 
         // full trajectory for warmstart shift
         std::vector<Eigen::Matrix<double, NU, 1>> new_u_traj;
@@ -324,8 +336,10 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
             double ut[NU];
             ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, i, "u", ut);
 
-            Eigen::Matrix<double, NU, 1> ui;
-            ui << ut[0], ut[1];
+            Eigen::Matrix<double, NU, 1> ui = Eigen::Matrix<double, NU, 1>::Zero();
+            ui(0) = ut[0];
+            if (NU > 1) ui(1) = ut[1];
+
             new_u_traj.push_back(ui);
         }
 
@@ -337,7 +351,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
             last_output.push_back(new_u_traj.back());
         }
 
-        if (!std::isfinite(ddelta_opt) || !std::isfinite(mtv_opt)) {
+        if (!std::isfinite(ddelta_opt) || (NU > 1 && !std::isfinite(mtv_opt))) {
             ROS_WARN("[MPC] u0 is NaN/Inf -> reset");
             is_initialized_ = false;
             last_output.assign(N, Eigen::Matrix<double, NU, 1>::Zero());

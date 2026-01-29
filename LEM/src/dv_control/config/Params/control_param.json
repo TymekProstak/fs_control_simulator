@@ -18,7 +18,7 @@
     "max_delta" : 0.4,
     "min_delta" : -0.4,
     "odom_frequency": 50.0,
-    "interpoleted_num_max_points": 5000,
+    "interpoleted_num_max_points": 50000,
     "distance_between_interpoleted_points": 0.1,
     "v_target" : 2.5,
     "using_pure_pursuit" : 0.0,

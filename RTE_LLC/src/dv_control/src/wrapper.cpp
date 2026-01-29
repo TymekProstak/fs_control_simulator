@@ -504,9 +504,6 @@ double Controller::acc_to_throttle_percentage(double a_desired)
     double torque_required = F_required * wheel_radius; // Moment obrotowy wymagany na kołach
 
     // Przekształcenie momentu obrotowego na sygnał sterujący przepustnicą (-1.0 - 1.0) -> percentage of all torque
-    std::cout<< "TORQUE REQ:"<<torque_required<<std::endl;
-    std::cout<< "MAX TORQUE:"<<max_motor_torque<<std::endl;
-    std::cout << "throthle percatege calc: " << torque_required / max_motor_torque*100.0 << std::endl;
     double throttle_command = torque_required / max_motor_torque*100.0;
 
     throttle_command = std::clamp(throttle_command, -100.0, 100.0);
@@ -525,6 +522,7 @@ static inline double wrap_to_pi(double a)
     return a;
 }
 
+
 void Controller::convert_state_to_mpc_state()
 {
     const int n = ref_path.X_ref.size();
@@ -533,16 +531,15 @@ void Controller::convert_state_to_mpc_state()
     // =========================
     // 1) closest-point w oknie
     // =========================
-    static int last_closest = 0;
+
     const int W = 60; // dostosuj (gęstość punktów / prędkość / dt)
 
-    int i_min = std::max(0, last_closest - W);
-    int i_max = std::min(n - 1, last_closest + W);
 
-    int idx_closest = i_min;
+
+    int idx_closest = 0;
     double min_dist = std::numeric_limits<double>::max();
 
-    for (int i = i_min; i <= i_max; ++i) {
+    for (int i = 0; i < n ; ++i) {
         const double dx = current_state.X - ref_path.X_ref(i);
         const double dy = current_state.Y - ref_path.Y_ref(i);
         const double d2 = dx*dx + dy*dy;
@@ -551,7 +548,6 @@ void Controller::convert_state_to_mpc_state()
             idx_closest = i;
         }
     }
-    last_closest = idx_closest;
 
     // =========================
     // 2) wybór segmentu: (i-1,i) vs (i,i+1)
@@ -587,6 +583,7 @@ void Controller::convert_state_to_mpc_state()
         return dx*dx + dy*dy;
     };
 
+
     int best_i0 = std::clamp(idx_closest, 0, n-2);
     int best_i1 = best_i0 + 1;
 
@@ -594,9 +591,11 @@ void Controller::convert_state_to_mpc_state()
     double dA = std::numeric_limits<double>::infinity();
     if (idx_closest >= 1) dA = proj_dist_sq_on_segment(idx_closest-1, idx_closest, tA, pxA, pyA);
 
+
     double tB=0, pxB=0, pyB=0;
     double dB = std::numeric_limits<double>::infinity();
     if (idx_closest <= n-2) dB = proj_dist_sq_on_segment(idx_closest, idx_closest+1, tB, pxB, pyB);
+
 
     double proj_X, proj_Y, t;
     if (dA < dB) {
@@ -607,6 +606,7 @@ void Controller::convert_state_to_mpc_state()
         proj_X = pxB; proj_Y = pyB; t = tB;
     }
 
+\
     // =========================
     // 3) path_yaw, ey, epsi
     // =========================
@@ -679,6 +679,7 @@ void Controller::convert_state_to_mpc_state()
     //         << " | proj_xy=(" << proj_X << "," << proj_Y << ")"
     //     );
     // }
+
     ey_count++;
     ey_sum += std::abs(ey);
     epsi_sum += std::abs(epsi);
@@ -693,20 +694,22 @@ void Controller::convert_state_to_mpc_state()
     mpc_debug_msg.epsi_avg = epsi_sum / ey_count;
     mpc_debug_msg.ey_current = mpc_state.ey;
     mpc_debug_msg.epsi_current = mpc_state.epsi;
-    mpc_debug_msg.v_ref = ref_path.velocity_ref(1);
-    mpc_debug_msg.kappa_ref = ref_path.curvature(0);
-    if(std::abs(ref_path.curvature(0))>1e-4){
-    mpc_debug_msg.R_ref = 1.0/ref_path.curvature(0);
+    mpc_debug_msg.v_ref = ref_path.velocity_ref(best_i1);
+    mpc_debug_msg.kappa_ref = ref_path.curvature(best_i0);
+    if(std::abs(ref_path.curvature(best_i0))>1e-4){
+    mpc_debug_msg.R_ref = 1.0/ref_path.curvature(best_i0);
     }
     else {
     mpc_debug_msg.R_ref = 1e4; // duży promień przy małej krzywiźnie
     }
-    mpc_debug_msg.alat_ref = ref_path.velocity_ref(0)*ref_path.velocity_ref(0)*(ref_path.curvature(0));
+    mpc_debug_msg.alat_ref = ref_path.velocity_ref(best_i1)*ref_path.velocity_ref(best_i1)*(ref_path.curvature(best_i0));
     mpc_debug_msg.v_s_current = current_state.vx*std::cos(mpc_state.epsi) - current_state.vy*std::sin(mpc_state.epsi);
     v_s_sum += current_state.vx*std::cos(mpc_state.epsi) - current_state.vy*std::sin(mpc_state.epsi);
     mpc_debug_msg.v_s_avg = v_s_sum/ey_count;
     mpc_debug_msg.next_yaw_rate_target = next_target_yaw_rate_from_mpc;
-    mpc_debug_msg.ax_target = ref_path.acceleration_ref(0);
+    //std::cout << "next_target_yaw_rate_from_mpc: " << next_target_yaw_rate_from_mpc << std::endl;
+    //std::cout<< "ref lat" <<  mpc_debug_msg.alat_ref <<std::endl;
+    mpc_debug_msg.ax_target = ref_path.acceleration_ref(best_i0);
 
 
     mpc_debug_msg.mpc_steer_angle = mpc_state.delta*180.0/M_PI;

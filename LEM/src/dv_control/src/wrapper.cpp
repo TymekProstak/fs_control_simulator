@@ -131,10 +131,10 @@ void Controller::pathCallback(const dv_interfaces::Path &msg)
         X_last_from_pp(i) = path[i].position.x;
         Y_last_from_pp(i) = path[i].position.y;
     }
-    if (path.size() > 90)
-    {
-        ROS_WARN_STREAM("[Path Selection] Received path with very large size: " << path.size());
-    }
+    // if (path.size() > 90)
+    // {
+    //     ROS_WARN_STREAM("[Path Selection] Received path with very large size: " << path.size());
+    // }
 
     // Path.msg contains only PoseArray + flag. There is no separate X/Y arrays.
     // We interpret full_path_enabled as: msg.path contains the full/global path.
@@ -149,7 +149,10 @@ void Controller::pathCallback(const dv_interfaces::Path &msg)
 void Controller::odometryCallback(const nav_msgs::Odometry &msg)
 {
     ros::Time t_start = ros::Time::now();
+    //std::cout << " weszłem do mapowania stanu" << std::endl;
     getCurrentState(msg);
+   // std::cout << " wyszedłem z mapowania stanu" << std::endl;
+
 
     geo_control_return control_output;  
 
@@ -160,7 +163,7 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
 
     // If full_path_enabled==true, treat X_last_from_pp/Y_last_from_pp as already-global/full.
     // path_process_for_control() will still crop/transform as needed.
-   
+    
     ref_path = path_process_for_control(param_, X_last_from_pp, Y_last_from_pp,current_state,  prev_last_point_, prev_last_point_valid_, all_path_recived);
     all_path_recived = ref_path.all_path_eligible; // if path processing decided path is not eligible, reset flag
     int rozmiar_po_procesowaniu = ref_path.X_ref.size();
@@ -175,9 +178,11 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
     //                     << rozmiar_po_procesowaniu );
     // }
 
+
     eligible_path = ref_path.geo_eligible; // check if path is eligible for control
     if (eligible_path)
     {
+
         // gałąź sterowanie MPC
         if(  all_path_recived &&  current_state.vx> 2.0)
         //if(false)
@@ -201,7 +206,6 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
                 publishControlCommand(delta_request,torque_request, 0.0);
                 publishReferencePath(ref_path.X_ref, ref_path.Y_ref);
                 ZOH_for_steering();
-                //ROS_WARN_STREAM("[MPC]");
             }
             // gałąź awaryjna – MPC się zepsuł
             else {
@@ -210,7 +214,6 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
                 convert_state_to_mpc_state();
                 geometricControl();
                 ZOH_for_steering();
-                ROS_WARN_STREAM("[GEOMETRIC AFTR MPC FAIL]");
             }
         }
         // gałąź sterowanie geometryczne
@@ -218,22 +221,27 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
             stanley.setTrack(ref_path.X_ref, ref_path.Y_ref);
             convert_state_to_mpc_state();
             geometricControl();
-            ZOH_for_steering();            
+            ZOH_for_steering();  
         }
+
     }
+
+
     // gałąź  – brak ścieżki , warn na konsole
     else {
         ROS_WARN_STREAM("[Control] No eligible path.");
         ZOH_for_steering();
     }
+
+
     publishGGLimitMarker();
 
     ros::Time t_end = ros::Time::now();
     double dt_ms = (t_end - t_start).toSec() * 1000.0;
     double dt_us = (t_end - t_start).toSec() * 1e6;
 
-    //    ROS_INFO_STREAM("[Callback] odometryCallback duration: "
-    //                  << dt_ms << " ms " );
+      ROS_INFO_STREAM("[Callback] odometryCallback duration: "
+                    << dt_ms << " ms " );
 }
 
 
@@ -529,16 +537,14 @@ void Controller::convert_state_to_mpc_state()
     // =========================
     // 1) closest-point w oknie
     // =========================
-    static int last_closest = 0;
-    const int W = 60; // dostosuj (gęstość punktów / prędkość / dt)
 
-    int i_min = std::max(0, last_closest - W);
-    int i_max = std::min(n - 1, last_closest + W);
 
-    int idx_closest = i_min;
+
+
+    int idx_closest = 0;
     double min_dist = std::numeric_limits<double>::max();
 
-    for (int i = i_min; i <= i_max; ++i) {
+    for (int i = 0; i < n ; ++i) {
         const double dx = current_state.X - ref_path.X_ref(i);
         const double dy = current_state.Y - ref_path.Y_ref(i);
         const double d2 = dx*dx + dy*dy;
@@ -547,7 +553,6 @@ void Controller::convert_state_to_mpc_state()
             idx_closest = i;
         }
     }
-    last_closest = idx_closest;
 
     // =========================
     // 2) wybór segmentu: (i-1,i) vs (i,i+1)
@@ -583,6 +588,7 @@ void Controller::convert_state_to_mpc_state()
         return dx*dx + dy*dy;
     };
 
+
     int best_i0 = std::clamp(idx_closest, 0, n-2);
     int best_i1 = best_i0 + 1;
 
@@ -590,9 +596,11 @@ void Controller::convert_state_to_mpc_state()
     double dA = std::numeric_limits<double>::infinity();
     if (idx_closest >= 1) dA = proj_dist_sq_on_segment(idx_closest-1, idx_closest, tA, pxA, pyA);
 
+
     double tB=0, pxB=0, pyB=0;
     double dB = std::numeric_limits<double>::infinity();
     if (idx_closest <= n-2) dB = proj_dist_sq_on_segment(idx_closest, idx_closest+1, tB, pxB, pyB);
+
 
     double proj_X, proj_Y, t;
     if (dA < dB) {
@@ -602,6 +610,7 @@ void Controller::convert_state_to_mpc_state()
         best_i0 = idx_closest; best_i1 = idx_closest + 1;
         proj_X = pxB; proj_Y = pyB; t = tB;
     }
+
 
     // =========================
     // 3) path_yaw, ey, epsi
@@ -675,6 +684,7 @@ void Controller::convert_state_to_mpc_state()
     //         << " | proj_xy=(" << proj_X << "," << proj_Y << ")"
     //     );
     // }
+
     ey_count++;
     ey_sum += std::abs(ey);
     epsi_sum += std::abs(epsi);
@@ -689,20 +699,22 @@ void Controller::convert_state_to_mpc_state()
     mpc_debug_msg.epsi_avg = epsi_sum / ey_count;
     mpc_debug_msg.ey_current = mpc_state.ey;
     mpc_debug_msg.epsi_current = mpc_state.epsi;
-    mpc_debug_msg.v_ref = ref_path.velocity_ref(1);
-    mpc_debug_msg.kappa_ref = ref_path.curvature(0);
-    if(std::abs(ref_path.curvature(0))>1e-4){
-    mpc_debug_msg.R_ref = 1.0/ref_path.curvature(0);
+    mpc_debug_msg.v_ref = ref_path.velocity_ref(best_i1);
+    mpc_debug_msg.kappa_ref = ref_path.curvature(best_i0);
+    if(std::abs(ref_path.curvature(best_i0))>1e-4){
+    mpc_debug_msg.R_ref = 1.0/ref_path.curvature(best_i0);
     }
     else {
     mpc_debug_msg.R_ref = 1e4; // duży promień przy małej krzywiźnie
     }
-    mpc_debug_msg.alat_ref = ref_path.velocity_ref(0)*ref_path.velocity_ref(0)*(ref_path.curvature(0));
+    mpc_debug_msg.alat_ref = ref_path.velocity_ref(best_i1)*ref_path.velocity_ref(best_i1)*(ref_path.curvature(best_i0));
     mpc_debug_msg.v_s_current = current_state.vx*std::cos(mpc_state.epsi) - current_state.vy*std::sin(mpc_state.epsi);
     v_s_sum += current_state.vx*std::cos(mpc_state.epsi) - current_state.vy*std::sin(mpc_state.epsi);
     mpc_debug_msg.v_s_avg = v_s_sum/ey_count;
     mpc_debug_msg.next_yaw_rate_target = next_target_yaw_rate_from_mpc;
-    mpc_debug_msg.ax_target = ref_path.acceleration_ref(0);
+    //std::cout << "next_target_yaw_rate_from_mpc: " << next_target_yaw_rate_from_mpc << std::endl;
+    //std::cout<< "ref lat" <<  mpc_debug_msg.alat_ref <<std::endl;
+    mpc_debug_msg.ax_target = ref_path.acceleration_ref(best_i0);
 
 
     mpc_debug_msg.mpc_steer_angle = mpc_state.delta*180.0/M_PI;

@@ -13,13 +13,8 @@
 #include <unsupported/Eigen/MatrixFunctions> // .exp()
 
 // ACADOS C interface
-extern "C" {
-    #include "acados_solver_mpc_ltv_discrete.h"
-    #include "acados_c/ocp_nlp_interface.h"
-    #include "acados_c/ocp_nlp_cost_model.h"
-    #include "acados_c/ocp_nlp_constraints_model.h"
-}
-
+#include "acados_solver_mpc_ltv_discrete.h"
+#include "acados_c/ocp_nlp_interface.h"
 namespace v2_control {
 
 // ============================================================
@@ -98,7 +93,6 @@ static inline void dump_solution_maxima(ocp_nlp_config* nlp_config,
     double uk[NU];
 
     double max_abs_ddelta = 0.0;
-    double max_abs_mtv    = 0.0;
 
     double max_abs_ey = 0.0;
     double max_abs_epsi = 0.0;
@@ -122,14 +116,12 @@ static inline void dump_solution_maxima(ocp_nlp_config* nlp_config,
         if (k < N_hor) {
             ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, k, "u", uk);
             max_abs_ddelta = std::max(max_abs_ddelta, std::abs(uk[0]));
-            if (NU > 1) max_abs_mtv = std::max(max_abs_mtv, std::abs(uk[1]));
         }
     }
 
     ROS_WARN_STREAM(std::fixed << std::setprecision(6)
         << "[MPC DIAG] maxima over horizon:"
         << " max|ddelta|=" << max_abs_ddelta
-        << " max|mtv|=" << max_abs_mtv
         << " max|ey|=" << max_abs_ey
         << " max|epsi|=" << max_abs_epsi
         << " max|vy|=" << max_abs_vy
@@ -165,8 +157,7 @@ static inline void discretize_expm_AB(
 
 // ============================================================
 // Nonlinear continuous dynamics (do RK4 -> Kd)
-// u = [ddelta, mtv]
-// mtv -> yaw moment: r_dot += mtv/Iz
+// u = [ddelta]
 // ============================================================
 
 static inline Eigen::Matrix<double, NX, 1> f_consistent_continuous(
@@ -331,7 +322,7 @@ void MPCInterface::reset_initial_guess(const MPC_State& x0, double v_ref0)
     const double current_epsi = x0.epsi;
 
     double x_traj[NX];
-    double u_zero[NU] = {0.0, 0.0};
+    double u_zero[NU] = {0.0};
 
     for (int i = 0; i <= N; ++i) {
         const double t = i * dt;
@@ -445,7 +436,6 @@ void MPCInterface::calculate_continuous_jacobian(
 
     // inputs
     Bc(6, 0) = 1.0;               // d_req_dot = ddelta
-    if (NU > 1) Bc(3, 1) = 1.0 / Iz; // r_dot += mtv/Iz
 }
 
 // ======================================================================
@@ -556,7 +546,6 @@ void MPCInterface::set_cost_to_acados()
     const double Q_delta  = param_.get("mpc_cost_Q_delta");
 
     // jeśli nie masz w ParamBanku -> daj małe, ale nie 0
-    const double R_mtv = param_.has("mpc_cost_R_mtv") ? param_.get("mpc_cost_R_mtv") : 1e-6;
 
     const int ny = NX + NU;
     Eigen::MatrixXd W = Eigen::MatrixXd::Zero(ny, ny);
@@ -569,7 +558,6 @@ void MPCInterface::set_cost_to_acados()
 
     // wejścia
     W(NX + 0, NX + 0) = R_ddelta;
-    if (NU > 1) W(NX + 1, NX + 1) = R_mtv;
 
     const int ny_e = NX;
     Eigen::MatrixXd W_e = Eigen::MatrixXd::Zero(ny_e, ny_e);
@@ -643,7 +631,6 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
 
             Eigen::Matrix<double, NU, 1> ui = Eigen::Matrix<double, NU, 1>::Zero();
             ui(0) = u_step[0];
-            if (NU > 1) ui(1) = u_step[1];
 
             new_u_traj.push_back(ui);
         }
@@ -658,10 +645,9 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
         }
 
         // u0
-        const double ddelta_opt = new_u_traj.empty() ? 0.0 : new_u_traj;
-        const double mtv_opt    = (NU > 1 && !new_u_traj.empty()) ? new_u_traj : 0.0;
+        const double ddelta_opt = new_u_traj.empty() ? 0.0 : new_u_traj[0](0);
 
-        if (!std::isfinite(ddelta_opt) || !std::isfinite(mtv_opt)) {
+        if (!std::isfinite(ddelta_opt)) {
             ROS_ERROR("[MPC DIAG] Solver returned NaN/INF in u0!");
             dump_acados_solver_stats(nlp_solver_, status);
             dump_solution_maxima(nlp_config_, nlp_dims_, nlp_out_, N);
@@ -679,7 +665,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
         double next_r = x1[3];
         if (!std::isfinite(next_r)) next_r = x0.r;
 
-        return {ddelta_opt, mtv_opt, true, next_r};
+        return {ddelta_opt, 0.0, true, next_r};
     }
 
     // FAIL
@@ -691,6 +677,20 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
     is_initialized_ = false;
     last_output.assign(N, Eigen::Matrix<double, NU, 1>::Zero());
     return {0.0, 0.0, false, x0.r};
+}
+
+MPC_Return MPCInterface::solve(const MPC_State &x0,
+                               const Eigen::VectorXd &curvature_ref,
+                               const Eigen::VectorXd &velocity_ref,
+                               const Eigen::VectorXd &acceleration_ref,
+                               double vx0_body)
+{
+    (void)acceleration_ref;
+    (void)vx0_body;
+
+    // Fallback: użyj prostszej wersji solve() (bez split-v).
+    // To naprawia linkowanie; docelowo można tu zaimplementować pełny split-v.
+    return this->solve(x0, curvature_ref, velocity_ref);
 }
 
 // ============================================================

@@ -72,6 +72,7 @@ void Stanley::findLookAheadPoint(const State &bolid_state)
     double X_front = bolid_state.X + param_.get("stanley_lf") * std::cos(bolide_yaw);
     double Y_front = bolid_state.Y + param_.get("stanley_lf") * std::sin(bolide_yaw);
 
+
     for( int idx = 0; idx < ptrack_.n_points; idx ++)
     {
 
@@ -82,6 +83,7 @@ void Stanley::findLookAheadPoint(const State &bolid_state)
         	min_dist_sqr = dist_sqr;
         }
     }
+  
     
       // Jeżeli najbliższy punkt jest ostatni -> błąd wcześniej w piplinie, nie wyliczymy kąta odcinka -> wyjdź bez zmian.
       if (idx_start >= ptrack_.n_points - 1) {
@@ -89,6 +91,7 @@ void Stanley::findLookAheadPoint(const State &bolid_state)
                         << idx_start << "). Brak kolejnego punktu – path_yaw NIE zostanie policzony.");
         return;
     }
+
     
     lookAheadPointInGlobalFrame.x = ptrack_.X(idx_start);
     lookAheadPointInGlobalFrame.y= ptrack_.Y(idx_start);

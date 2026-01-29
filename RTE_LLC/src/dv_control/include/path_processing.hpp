@@ -324,38 +324,49 @@ static inline Vec2 tangentAtEnd(const TrackSpline2D& sp)
 static inline void add_extra_point_before_start_along_spline_tangent(
     Poly_with_kappa& poly,
     const TrackSpline2D& sp,
-    double distance)
+    double distance,const ParamBank& P)
 {
     if (poly.path.size() < 2) return;
 
     Vec2 p0 = sp.eval(0.0);
-    Vec2 t0 = tangentAtStart(sp);
+    Vec2 t0 = tangentAtStart(sp); // jednostkowy wektor styczny na początku
+    const double ds = P.get("distance_between_interpoleted_points");
+    int number_of_points = (int)std::ceil(distance / ds);
+    if (number_of_points < 1) number_of_points = 1;
+    for(int i = 1; i <= number_of_points; ++i) {
+        Vec2 newp;
+        newp.x = p0.x - t0.x * (float)(ds * i);
+        newp.y = p0.y - t0.y * (float)(ds * i);
+        poly.path.insert(poly.path.begin(), newp);
+        poly.kappa.insert(poly.kappa.begin(), 0.0); // dobudowane -> kappa=0
+    }
 
-    Vec2 newp;
-    newp.x = p0.x - t0.x * (float)distance;
-    newp.y = p0.y - t0.y * (float)distance;
-
-    poly.path.insert(poly.path.begin(), newp);
-    poly.kappa.insert(poly.kappa.begin(), 0.0); // dobudowane -> kappa=0
 }
 
 static inline void add_extra_point_after_end_along_spline_tangent(
     Poly_with_kappa& poly,
     const TrackSpline2D& sp,
-    double distance)
+    double distance,
+    const ParamBank& P)
 {
     if (poly.path.size() < 2) return;
 
     const double L = sp.totalLength();
     Vec2 pL = sp.eval(L);
-    Vec2 tL = tangentAtEnd(sp);
+    Vec2 tL = tangentAtEnd(sp); // jednostkowy wektor styczny na końcu
 
-    Vec2 newp;
-    newp.x = pL.x + tL.x * (float)distance;
-    newp.y = pL.y + tL.y * (float)distance;
+    const double ds = P.get("distance_between_interpoleted_points");
+    int number_of_points = (int)std::ceil(distance / ds);
+    if (number_of_points < 1) number_of_points = 1;
+    for(int i = 1; i <= number_of_points; ++i) {
+        Vec2 newp;
+        newp.x = pL.x + tL.x * (float)(ds * i);
+        newp.y = pL.y + tL.y * (float)(ds * i);
 
-    poly.path.push_back(newp);
-    poly.kappa.push_back(0.0); // dobudowane -> kappa=0
+        poly.path.push_back(newp);
+        poly.kappa.push_back(0.0); // dobudowane -> kappa=0
+    }
+
 }
 
 
@@ -397,20 +408,49 @@ static inline PathProcessResult path_procces_straight_line_2_points(
     if (t > 1.0)
         L_new += P.get("min_path_length_for_geo") - dist_to_p1;
 
-    const size_t pts_number = (size_t)std::ceil(L_new / ds) + 1;
 
-    Eigen::VectorXd X_tmp((int)pts_number);
-    Eigen::VectorXd Y_tmp((int)pts_number);
+    if(t >= 0.0) {
+        
+        const size_t pts_number = (size_t)std::ceil(L_new / ds) + 1;
+        Eigen::VectorXd X_tmp((int)pts_number);
+        Eigen::VectorXd Y_tmp((int)pts_number);
 
-    const double scale = L_new / L;
-    for (size_t i = 0; i < pts_number; ++i) {
-        const double u = (double)i / (double)(pts_number - 1);
-        X_tmp((int)i) = p0_x + scale * u * dx;
-        Y_tmp((int)i) = p0_y + scale * u * dy;
+        const double bolid_x_proj = p0_x + t * dx;;
+        const double bolid_y_proj = p0_y + t * dy;
+    
+        const double scale = L_new / L;
+        for (size_t i = 0; i < pts_number; ++i) {
+            const double u = (double)i / (double)(pts_number - 1);
+            X_tmp((int)i) = bolid_x_proj + scale * u * dx;
+            Y_tmp((int)i) = bolid_y_proj + scale * u * dy;
+        }
+    
+        const double yaw0 = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
+        return makeCurvInvalidResult(X_tmp, Y_tmp, yaw0, P);
+
     }
 
-    const double yaw0 = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
-    return makeCurvInvalidResult(X_tmp, Y_tmp, yaw0, P);
+    if(t < 0.0)
+    {
+        const double dist_to_p0 = -t * L;
+        L_new += 0.5 + dist_to_p0;
+        const size_t pts_number = (size_t)std::ceil(L_new / ds) + 1;
+
+        Eigen::VectorXd X_tmp((int)pts_number);
+        Eigen::VectorXd Y_tmp((int)pts_number);
+    
+        const double scale = L_new / L;
+        for (size_t i = 0; i < pts_number; ++i) {
+            const double u = (double)i / (double)(pts_number - 1);
+            X_tmp((int)i) = p0_x + scale * u * dx;
+            Y_tmp((int)i) = p0_y + scale * u * dy;
+        }
+        const double yaw0 = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
+        return makeCurvInvalidResult(X_tmp, Y_tmp, yaw0, P);
+        
+    }
+
+  
 }
 
 // =====================================================
@@ -461,9 +501,9 @@ static inline PathProcessResult path_process_3_or_more_points_open_spline(
 
             if (t > 1.0) {
                 const double seg_len = std::hypot(base[n-1].x - base[n-2].x, base[n-1].y - base[n-2].y);
-                const double dist_to_p1 = -(t - 1.0) * seg_len;
+                const double dist_to_p1 = (t - 1.0) * seg_len;
 
-                const double extra = P.get("min_path_length_for_geo") - dist_to_p1;
+                const double extra = P.get("min_path_length_for_geo") + dist_to_p1;
                 if (extra > 0.0) {
                     Vec2 dir = base[n-1] - base[n-2];
                     const double dlen = std::hypot(dir.x, dir.y);
@@ -502,7 +542,7 @@ static inline PathProcessResult path_process_3_or_more_points_open_spline(
         if (t < 0.0) {
             const double seglen = std::hypot(poly.path[1].x - poly.path[0].x, poly.path[1].y - poly.path[0].y);
             const double dist_to_p0 = -t * seglen;
-            add_extra_point_before_start_along_spline_tangent(poly, sp, dist_to_p0 + 0.5);
+            add_extra_point_before_start_along_spline_tangent(poly, sp, dist_to_p0 + 0.5, P);
         }
     }
 
@@ -513,9 +553,9 @@ static inline PathProcessResult path_process_3_or_more_points_open_spline(
         const double t = find_t_on_segment(poly.path[n-2], poly.path[n-1], q);
         if (t > 1.0) {
             const double seglen = std::hypot(poly.path[n-1].x - poly.path[n-2].x, poly.path[n-1].y - poly.path[n-2].y);
-            const double dist_to_p1 = -(t - 1.0) * seglen;
-            const double extra = P.get("min_path_length_for_geo") - dist_to_p1;
-            if (extra > 0.0) add_extra_point_after_end_along_spline_tangent(poly, sp, extra);
+            const double dist_to_p1 = (t - 1.0) * seglen;
+            const double extra = P.get("min_path_length_for_geo") + dist_to_p1;
+            if (extra > 0.0) add_extra_point_after_end_along_spline_tangent(poly, sp, extra, P);
         }
     }
 
@@ -842,8 +882,7 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
     double jerk_down,
     double a0_along,
     int merge_iter,
-    const ParamBank& P
-)
+    const ParamBank& P)
 {
     SpeedProfileGeom prof;
     prof.s0 = s0;
@@ -1094,7 +1133,7 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
         j_max,
         a0_along,
         merge_iter,
-         P
+        P
     );
 
     if (prof.v.size() < 2) {

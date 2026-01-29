@@ -13,12 +13,8 @@
 #include <unsupported/Eigen/MatrixFunctions> // .exp()
 
 // ACADOS C interface
-extern "C" {
-    #include "acados_solver_mpc_ltv_discrete.h"
-    #include "acados_c/ocp_nlp_interface.h"
-    #include "acados_c/ocp_nlp_cost_model.h"
-    #include "acados_c/ocp_nlp_constraints_model.h"
-}
+#include "acados_solver_mpc_ltv_discrete.h"
+#include "acados_c/ocp_nlp_interface.h"
 
 namespace v2_control {
 
@@ -165,8 +161,11 @@ static inline void discretize_expm_AB(
 
 // ============================================================
 // Nonlinear continuous dynamics (do RK4 -> Kd)
+//
+// UWAGA: teraz mamy 2 zmienne decyzyjne:
 // u = [ddelta, mtv]
-// mtv -> yaw moment: r_dot += mtv/Iz
+// - u(0) = d(delta_request)/dt
+// - u(1) = mtv = torque vectoring yaw moment (Mz_tv) wokół CoM
 // ============================================================
 
 static inline Eigen::Matrix<double, NX, 1> f_consistent_continuous(
@@ -216,10 +215,10 @@ static inline Eigen::Matrix<double, NX, 1> f_consistent_continuous(
     Eigen::Matrix<double, NX, 1> xdot;
     xdot.setZero();
 
-    xdot(0) = vy * c_epsi + v * s_epsi;                  // ey_dot
-    xdot(1) = r - kappa * v;                             // epsi_dot
-    xdot(2) = (Fyf * c_delta + Fyr) / m - v * r;         // vy_dot
-    xdot(3) = (lf * Fyf * c_delta - lr * Fyr) / Iz + (mtv / Iz); // r_dot + tv
+    xdot(0) = vy * c_epsi + v * s_epsi;                         // ey_dot
+    xdot(1) = r - kappa * v;                                    // epsi_dot
+    xdot(2) = (Fyf * c_delta + Fyr) / m - v * r;                // vy_dot
+    xdot(3) = (lf * Fyf * c_delta - lr * Fyr) / Iz + (mtv / Iz);// r_dot + tv
 
     // Servo
     xdot(4) = d_delta;                                                     // delta_dot
@@ -331,7 +330,7 @@ void MPCInterface::reset_initial_guess(const MPC_State& x0, double v_ref0)
     const double current_epsi = x0.epsi;
 
     double x_traj[NX];
-    double u_zero[NU] = {0.0, 0.0};
+    double u_zero[NU] = {0.0}; // [ddelta, mtv] -> oba 0 na start
 
     for (int i = 0; i <= N; ++i) {
         const double t = i * dt;
@@ -352,7 +351,9 @@ void MPCInterface::reset_initial_guess(const MPC_State& x0, double v_ref0)
 
 // ======================================================================
 // Continuous Jacobian
-// Bc(6,0)=1, Bc(3,1)=1/Iz  (MTV)
+// inputs:
+//  - u(0)=ddelta -> d_req_dot
+//  - u(1)=mtv    -> r_dot += mtv/Iz   (torque vectoring)
 // ======================================================================
 void MPCInterface::calculate_continuous_jacobian(
     const Eigen::Matrix<double, NX, 1>& x,
@@ -445,7 +446,7 @@ void MPCInterface::calculate_continuous_jacobian(
 
     // inputs
     Bc(6, 0) = 1.0;               // d_req_dot = ddelta
-    if (NU > 1) Bc(3, 1) = 1.0 / Iz; // r_dot += mtv/Iz
+    if (NU > 1) Bc(3, 1) = 1.0 / Iz; // r_dot += mtv/Iz (torque vectoring)
 }
 
 // ======================================================================
@@ -476,7 +477,7 @@ void MPCInterface::ltv_matrixes_to_acados(const MPC_State& x0,
     Eigen::Matrix<double, NX, 1> x_lin;
     x_lin << x0.ey, x0.epsi, x0.vy, x0.r, x0.delta, x0.d_delta, x0.delta_request;
 
-    // u0 = last_output[0]
+    // u0 = last_output[0]  (u=[ddelta, mtv])
     Eigen::Matrix<double, NU, 1> u0 = Eigen::Matrix<double, NU, 1>::Zero();
     if (!last_output.empty()) u0 = last_output[0];
 
@@ -555,8 +556,18 @@ void MPCInterface::set_cost_to_acados()
     const double Q_r      = param_.get("mpc_cost_Q_r");
     const double Q_delta  = param_.get("mpc_cost_Q_delta");
 
-    // jeśli nie masz w ParamBanku -> daj małe, ale nie 0
-    const double R_mtv = param_.has("mpc_cost_R_mtv") ? param_.get("mpc_cost_R_mtv") : 1e-6;
+    // Teraz mamy 2 zmienne decyzyjne: u=[ddelta, mtv]
+    // - ddelta: pochodna żądanego skrętu
+    // - mtv: torque vectoring (yaw moment)
+    // Waga na mtv: preferowane z ParamBanku, fallback na małe >0
+    double R_mtv = 1e-3;
+    if (NU > 1) {
+        try {
+            R_mtv = param_.get("mpc_cost_R_tv");
+        } catch (...) {
+            ROS_WARN("[MPC] Param mpc_cost_R_mtv missing -> using fallback R_mtv=1e-3");
+        }
+    }
 
     const int ny = NX + NU;
     Eigen::MatrixXd W = Eigen::MatrixXd::Zero(ny, ny);
@@ -643,7 +654,7 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
 
             Eigen::Matrix<double, NU, 1> ui = Eigen::Matrix<double, NU, 1>::Zero();
             ui(0) = u_step[0];
-            if (NU > 1) ui(1) = u_step[1];
+            if (NU > 1) ui(1) = u_step[1]; // mtv (torque vectoring)
 
             new_u_traj.push_back(ui);
         }
@@ -658,10 +669,10 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
         }
 
         // u0
-        const double ddelta_opt = new_u_traj.empty() ? 0.0 : new_u_traj;
-        const double mtv_opt    = (NU > 1 && !new_u_traj.empty()) ? new_u_traj : 0.0;
+        const double ddelta_opt = new_u_traj.empty() ? 0.0 : new_u_traj[0](0);
+        const double mtv_opt    = (NU > 1 && !new_u_traj.empty()) ? new_u_traj[0](1) : 0.0;
 
-        if (!std::isfinite(ddelta_opt) || !std::isfinite(mtv_opt)) {
+        if (!std::isfinite(ddelta_opt) || (NU > 1 && !std::isfinite(mtv_opt))) {
             ROS_ERROR("[MPC DIAG] Solver returned NaN/INF in u0!");
             dump_acados_solver_stats(nlp_solver_, status);
             dump_solution_maxima(nlp_config_, nlp_dims_, nlp_out_, N);
@@ -691,6 +702,20 @@ MPC_Return MPCInterface::solve(const MPC_State &x0,
     is_initialized_ = false;
     last_output.assign(N, Eigen::Matrix<double, NU, 1>::Zero());
     return {0.0, 0.0, false, x0.r};
+}
+
+MPC_Return MPCInterface::solve(const MPC_State &x0,
+                               const Eigen::VectorXd &curvature_ref,
+                               const Eigen::VectorXd &velocity_ref,
+                               const Eigen::VectorXd &acceleration_ref,
+                               double vx0_body)
+{
+    (void)acceleration_ref;
+    (void)vx0_body;
+
+    // Fallback: użyj prostszej wersji solve() (bez split-v).
+    // To naprawia linkowanie; docelowo można tu zaimplementować pełny split-v.
+    return this->solve(x0, curvature_ref, velocity_ref);
 }
 
 // ============================================================
