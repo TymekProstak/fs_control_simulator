@@ -157,7 +157,7 @@ inline ParamBank build_param_bank(const nlohmann::json& J) {
   P.add("vel_planner_max_accel", JgetReq(J, "velocity_planner.max_accel"));
   P.add("vel_planner_max_decel", JgetReq(J, "velocity_planner.max_decel"));
   P.add("vel_planner_mux_acc", P.get("vel_planner_max_accel") / 9.81);
-  P.add("vel_planner_mux_dec", P.get("vel_planner_max_decel") / 9.81);
+  P.add("vel_planner_mux_dec", -1*P.get("vel_planner_max_decel") / 9.81);
   P.add("vel_planner_v_min", JgetReq(J, "velocity_planner.v_min"));
   P.add("vel_planner_v_max", JgetReq(J, "velocity_planner.v_max"));
   P.add("vel_planner_max_corrnering_accel", JgetReq(J, "velocity_planner.max_corrnering_accel"));

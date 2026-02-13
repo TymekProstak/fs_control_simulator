@@ -649,35 +649,74 @@ static inline double wrapS(double s, double L)
     return s;
 }
 
-// friction ellipse longitudinal availability
-static inline double longAvail(double v, double kappa, double a_long_max, double a_lat_max)
+// =====================================================
+// Velocity planner: limits & vsat (match logic from path_proces.hpp)
+//  - includes aero (aero_downforce_coeff * v^2)
+//  - uses friction ellipse with available longitudinal accel/dec at given v,kappa
+// =====================================================
+
+// friction ellipse longitudinal availability (WITH AERO DOWNFORCE)
+static inline double longAvailAx(double v, double kappa, const ParamBank& P, bool acc = true)
 {
-    const double ay = v*v * std::abs(kappa);
-    const double r  = std::min(1.0, ay / std::max(1e-9, a_lat_max));
-    const double term = std::max(0.0, 1.0 - r*r);
-    return a_long_max * std::sqrt(term);
+    const double mux = P.get(acc ? "vel_planner_mux_acc" : "vel_planner_mux_dec");
+    const double muy = P.get("vel_planner_muy");
+    const double Cl  = P.get("vel_planner_Cl");
+    const double m   = P.get("vel_planner_m");
+    const double g   = 9.81;
+
+    // Zakładam: F_down = Cl * v^2 [N]
+    const double Fz = m*g + Cl*v*v;              // [N]
+    const double ay = v*v*kappa;                 // [m/s^2]
+
+    const double ay_max = muy * (Fz / m);        // [m/s^2]
+    const double ax_max = mux * (Fz / m);        // [m/s^2]
+
+    if (ay_max <= 1e-12) return 0.0;
+
+    const double ratio  = ay / ay_max;
+    const double inside = 1.0 - ratio*ratio;
+
+    return ax_max * std::sqrt(std::max(0.0, inside));
 }
 
 static inline void accelBoundsAt(
     double v_here, double k_here,
-    double a_acc_max, double a_dec_max, double a_lat_max,
-    double& a_min_out, double& a_max_out)
+    double& a_min_out, double& a_max_out,
+    const ParamBank& P)
 {
-    a_max_out =  longAvail(v_here, k_here, a_acc_max, a_lat_max);   // >=0
-    a_min_out = -longAvail(v_here, k_here, a_dec_max, a_lat_max);   // <=0
+    a_max_out =  longAvailAx(v_here, k_here, P, true);
+    a_min_out = -longAvailAx(v_here, k_here, P, false);
 }
 
 static inline std::vector<double> buildVSat(
     const std::vector<double>& kappa,
     double v_max,
-    double a_lat_max)
+    const ParamBank& P)
 {
     const int N = (int)kappa.size();
     std::vector<double> vsat(N, v_max);
+
+    const double muy = P.get("vel_planner_muy");
+    const double Cl  = P.get("vel_planner_Cl");
+    const double m   = P.get("vel_planner_m");
+    const double g   = 9.81;
+
     for (int i = 0; i < N; ++i) {
         const double kk = std::abs(kappa[i]);
         double v_kappa = v_max;
-        if (kk > 1e-9) v_kappa = std::sqrt(std::max(0.0, a_lat_max / kk));
+
+        if (kk > 1e-9) {
+            // v^2 * (kappa - muy*Cl/m) <= muy*g
+            const double denom = kk - (muy * Cl / m);
+            if (denom > 1e-6) {
+                const double v2 = (muy * g) / denom;
+                v_kappa = std::sqrt(std::max(0.0, v2));
+            } else {
+                // teoretycznie brak ograniczenia z tego wzoru
+                v_kappa = v_max;
+            }
+        }
+
         vsat[i] = std::clamp(v_kappa, 0.0, v_max);
     }
     return vsat;
@@ -692,11 +731,11 @@ static inline void forwardPass_threeCases(
     double v_max,
     double a_acc_max,
     double a_dec_max,
-    double a_lat_max,
     double v0,
     std::vector<double>& v,
     std::vector<double>& a,
-    std::vector<bool>& is_valid)
+    std::vector<bool>& is_valid,
+    const ParamBank& P)
 {
     const int N = (int)kappa.size();
     v.assign(N, 0.0);
@@ -709,8 +748,8 @@ static inline void forwardPass_threeCases(
         const double v0i = v[i];
         const double k0  = kappa[i];
 
-        const double a_av_max = longAvail(v0i, k0, a_acc_max, a_lat_max);      // >=0
-        const double a_av_min = -longAvail(v0i, k0, a_dec_max, a_lat_max);     // <=0
+        double a_av_min = 0.0, a_av_max = 0.0;
+        accelBoundsAt(v0i, k0 ,  a_av_min, a_av_max, P);
 
         const double v_sat_next = vsat[i+1];
         const double a_to_sat = (v_sat_next*v_sat_next - v0i*v0i) / (2.0*ds);
@@ -746,10 +785,10 @@ static inline void fullBackwardPass_fix(
     double ds,
     double a_acc_max,
     double a_dec_max,
-    double a_lat_max,
     std::vector<double>& v,
     std::vector<double>& a,
-    std::vector<bool>& is_valid)
+    std::vector<bool>& is_valid,
+    const ParamBank& P)
 {
     const int N = (int)kappa.size();
     if ((int)v.size() != N || (int)a.size() != N) return;
@@ -766,14 +805,14 @@ static inline void fullBackwardPass_fix(
 
         if (is_valid[i-1] && a_matches) continue;
 
-        double a1_min, a1_max;
-        accelBoundsAt(v1, k1, a_acc_max, a_dec_max, a_lat_max, a1_min, a1_max);
+        double a1_min = 0.0, a1_max = 0.0;
+        accelBoundsAt(v1, k1, a1_min, a1_max, P);
 
         const double v0_reach_max = safeSqrt(v1*v1 - 2.0*a1_min*ds);                 // a1_min<=0 -> plus
         const double v0_reach_min = safeSqrt(std::max(0.0, v1*v1 - 2.0*a1_max*ds));   // a1_max>=0 -> minus
 
-        double a0_min, a0_max;
-        accelBoundsAt(v0_old, k0, a_acc_max, a_dec_max, a_lat_max, a0_min, a0_max);
+        double a0_min = 0.0, a0_max = 0.0;
+        accelBoundsAt(v0_old, k0,  a0_min, a0_max, P);
 
         const bool valid_v = (v0_old >= v0_reach_min - 1e-9) && (v0_old <= v0_reach_max + 1e-9);
         const bool valid_a_end   = (a_avg >= a1_min - 1e-9) && (a_avg <= a1_max + 1e-9);
@@ -785,7 +824,8 @@ static inline void fullBackwardPass_fix(
             continue;
         }
 
-        const double a_brake = -longAvail(v1, k1, a_dec_max, a_lat_max); // <=0
+        // Maksymalne hamowanie wg ograniczeń w punkcie (v1,k1)
+        const double a_brake = a1_min; // <=0
 
         const double v0_max  = safeSqrt(v1*v1 - 2.0*a_brake*ds);
         v[i-1] = std::min(v[i-1], v0_max);
@@ -803,13 +843,13 @@ static inline void jerkForwardClamp(
     double ds,
     double a_acc_max,
     double a_dec_max,
-    double a_lat_max,
     double jerk_up,
     double jerk_down,
     double a0_along,
     std::vector<double>& v,
     std::vector<double>& a,
-    std::vector<bool>& is_valid)
+    std::vector<bool>& is_valid,
+    const ParamBank& P)
 {
     const int N = (int)kappa.size();
     if ((int)v.size() != N || (int)a.size() != N) return;
@@ -824,7 +864,7 @@ static inline void jerkForwardClamp(
         const double k0 = kappa[i];
 
         double a_min, a_max;
-        accelBoundsAt(v0, k0, a_acc_max, a_dec_max, a_lat_max, a_min, a_max);
+        accelBoundsAt(v0, k0,  a_min, a_max, P);
 
         double v1_guess = v[i+1];
         if (!std::isfinite(v1_guess)) v1_guess = v0;
@@ -863,13 +903,13 @@ static inline void final_jerkForwardClamp(
     double ds,
     double a_acc_max,
     double a_dec_max,
-    double a_lat_max,
     double jerk_up,
     double jerk_down,
     double a0_along,
     std::vector<double>& v,
     std::vector<double>& a,
-    std::vector<bool>& is_valid)
+    std::vector<bool>& is_valid,
+    const ParamBank& P)
 {
     const int N = (int)kappa.size();
     if ((int)v.size() != N || (int)a.size() != N) return;
@@ -884,7 +924,7 @@ static inline void final_jerkForwardClamp(
         const double k0 = kappa[i];
 
         double a_min, a_max;
-        accelBoundsAt(v0, k0, a_acc_max, a_dec_max, a_lat_max, a_min, a_max);
+        accelBoundsAt(v0, k0, a_min, a_max, P);
 
         double v1_guess = v[i+1];
         if (!std::isfinite(v1_guess)) v1_guess = v0;
@@ -949,7 +989,7 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
         prof.kappa[i] = sp_closed.getCurvature(s);
     }
 
-    const std::vector<double> vsat = buildVSat(prof.kappa, v_max, a_lat_max);
+    const std::vector<double> vsat = buildVSat(prof.kappa, v_max, P);
 
     std::vector<double> v, a;
     std::vector<bool> is_valid;
@@ -958,30 +998,34 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
         prof.kappa, vsat,
         ds_geom,
         v_min, v_max,
-        a_acc_max, a_dec_max, a_lat_max,
+        a_acc_max, a_dec_max,
         v0_along,
-        v, a, is_valid);
+        v, a, is_valid,
+        P);
 
     fullBackwardPass_fix(
         prof.kappa, vsat,
         ds_geom,
-        a_acc_max, a_dec_max, a_lat_max,
-        v, a, is_valid);
+        a_acc_max, a_dec_max,
+        v, a, is_valid,
+        P);
 
     for (int it = 0; it < std::max(0, merge_iter); ++it) {
         jerkForwardClamp(
             prof.kappa, vsat,
             ds_geom,
-            a_acc_max, a_dec_max, a_lat_max,
+            a_acc_max, a_dec_max,
             jerk_up, jerk_down,
             a0_along,
-            v, a, is_valid);
+            v, a, is_valid,
+            P);
 
         fullBackwardPass_fix(
             prof.kappa, vsat,
             ds_geom,
-            a_acc_max, a_dec_max, a_lat_max,
-            v, a, is_valid);
+            a_acc_max, a_dec_max,
+            v, a, is_valid,
+            P);
     }
 
     const double smooth_jerk_up   = jerk_up   * 1.0 / P.get("vel_planner_smoothing_factor");
@@ -989,10 +1033,11 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
     final_jerkForwardClamp(
         prof.kappa, vsat,
         ds_geom,
-        a_acc_max, a_dec_max, a_lat_max,
+        a_acc_max, a_dec_max,
         smooth_jerk_up, smooth_jerk_down,
         a0_along,
-        v, a, is_valid);
+        v, a, is_valid,
+        P);
 
     // final clamps
     for (int i = 0; i < N; ++i) {
