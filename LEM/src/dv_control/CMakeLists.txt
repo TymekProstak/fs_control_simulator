@@ -79,7 +79,7 @@ set(control_SRC
   src/stanley.cpp
   src/wrapper.cpp
   src/pure_pursit.cpp
-  src/mpc_lti_charmles.cpp
+  src/mpc_ltv_v_planner.cpp
 )
 
 set(control_no_mpc_SRC

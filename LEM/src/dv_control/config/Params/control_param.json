@@ -27,17 +27,18 @@
   },
 
   "velocity_planner":{
-    "max_accel": 6.0,
+    "max_accel": 8.0,
     "max_decel": -5.0,
     "v_min": 2.0,
     "v_max": 12.5,
-    "max_corrnering_accel": 7.0,
+    "max_corrnering_accel": 8.0,
     "saftey_factor": 0.95,
     "max jerk": 25.0,
     "spatial_step": 0.1,
     "number_of_jerk_merging_iterations": 3,
-    "smoothing_factor": 0.2
-
+    "smoothing_factor": 0.2,
+    "Cl": 1.88,
+    "m": 193.0
   },
 
   "mpc":{
@@ -57,8 +58,8 @@
     "Iz": 85.0,
     "lf": 0.738,
     "lr": 0.792,
-    "Cf": 35716.0,
-    "Cr": 35716.0,
+    "Cf": 26144.0,
+    "Cr": 26144.0,
     "steer_natural_freq" : 15.0,
     "steer_damping" : 1.0,
     "max_steering_angle_rate": 0.8,
@@ -73,7 +74,7 @@
 
    "cost":{
     "Q_y": 50.0,
-    "Q_psi": 200.0,
+    "Q_psi": 300.0,
     "Q_r" : 1.0,
     "Q_delta": 1.0,
     "R_ddelta": 600.0,
@@ -84,6 +85,66 @@
     "max_iter": 150,
     "eps": 1e-3,
     "mpc_N": 100
+   },
+
+   "lap_time_optimizer": {
+
+    "lto_params": {
+      "g": 9.81,
+      "v_min": 1.0,
+      "v_max": 40.0,
+      "lf": 1.5,
+      "lr": 1.5,
+
+      "Cm": 1.0,
+      "Cr0": 0.1,
+      "Cl": 1.0,
+
+      "max_drive_power": 80000.0,
+      "max_brake_power": 80000.0,
+
+      "max_tv": 1500.0,
+      "min_tv": -1500.0,
+
+      "max_delta": 0.4,
+      "min_delta": -0.4,
+
+      "max_d_delta": 0.8,
+      "min_d_delta": -0.8,
+
+      "max_d_T": 500.0,
+      "min_d_T": -500.0,
+
+      "Fz_nom": 1000.0,
+
+      "ax_max": 6.0,
+      "ay_max": 7.0,
+
+      "mu_y": 1.6,
+      "mu_x": 1.6,
+
+      "Cf": 35716.0,
+      "Bf": 18.6,
+      "Df": 1.65,
+
+      "Cr": 35716.0,
+      "Br": 18.6,
+      "Dr": 1.65,
+
+      "length": 3.0,
+      "widith": 1.5,
+      "track_width": 1.2,
+
+      "tv_cost": 0.0005,
+      "d_delta_cost": 600.0,
+      "d_T_cost": 1.0,
+      "beta_cost": 1.0,
+      "s_dot_cost": 1.0,
+
+      "m": 193.0,
+      "Iz": 85.0,
+      "ds": 0.1
+    }
    }
 
 

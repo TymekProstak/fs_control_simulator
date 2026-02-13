@@ -14,3 +14,5 @@ float32 gg_limit_x
 float32 gg_limit_y
 float32 mpc_steer_rate
 float32 mpc_steer_angle
+float32 mpc_yaw_rate_from_curvature
+bool solver_failed

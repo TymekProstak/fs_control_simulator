@@ -31,7 +31,7 @@
     "max_decel": -7.0,
     "v_min": 2.0,
     "v_max": 12.5,
-    "max_corrnering_accel": 9.80,
+    "max_corrnering_accel": 8.80,
     "saftey_factor": 0.95,
     "max jerk": 25.0,
     "spatial_step": 0.1,
@@ -76,7 +76,7 @@
     "Q_r" : 1.0,
     "Q_delta": 1.0,
     "R_ddelta": 600.0,
-    "R_tv": 0.00075,
+    "R_tv": 0.0005,
     "R_d_tv": 0.0
    },
    "solver":{

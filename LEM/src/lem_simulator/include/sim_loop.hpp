@@ -193,6 +193,29 @@ private:
     double percetage_of_time_tc_active_;
     double time_tc_active_ = 0.0;
     double time_beta_over_9_ = 0.0;
+    double kappa_metric_ = 0.0;
+    double slip_angle_metric_ = 0.0;
+    double slip_body_metric_ = 0.0;
+
+    // ---- crash handling ----
+    bool crashed_ = false;
+    std::string crash_reason_;
+    int crash_step_ = -1;
+    double crash_time_s_ = -1.0;
+
+    // opcjonalnie: żeby nie spamować shutdownem
+    bool shutdown_requested_ = false;
+
+    inline void mark_crash_(const std::string& reason)
+    {
+        if (crashed_) return;
+        crashed_ = true;
+        crash_reason_ = reason;
+        crash_step_ = step_number_;
+        crash_time_s_ = step_number_ * P_.get("simulation_time_step");
+    }
+
+
 
     ros::Subscriber sub_mpc_debug_;
 
@@ -317,6 +340,8 @@ private:
     void publish_bolid_tf_true();
     void pub_full_state_();
     void publish_bolid_marker_();
+
+    
 };
 
 } // namespace lem_dynamics_sim_

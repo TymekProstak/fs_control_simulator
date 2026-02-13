@@ -113,12 +113,14 @@ namespace v2_control {
         Eigen::VectorXd X_path_all;
         Eigen::VectorXd Y_path_all;
         double path_yaw_ = 0.0;
+        double ey_ = 0.0;
         double kappa_last_ = 0.0;
         double v_ref_last_ = 0.0;
         double R_ref_last_ = 0.0;
         double alat_ref_last_ = 0.0;
         Vec2 prev_last_point_;
         bool prev_last_point_valid_ = false;
+        bool solver_failed_ = false;
 
 	 
     };

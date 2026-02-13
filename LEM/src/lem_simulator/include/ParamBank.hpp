@@ -102,6 +102,8 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("angle_construction_rear",  JgetReqSafe(J,"vehicle.angle_construction_rear"));
   P.add("r_front",   JgetReqSafe(J,"vehicle.r_front"));
   P.add("r_rear",    JgetReqSafe(J,"vehicle.r_rear"));
+  P.add("car_length" ,  JgetReqSafe(J,"vehicle.length"));
+  P.add("car_width" ,   JgetReqSafe(J,"vehicle.width"));
 // --- Tire parameters (MF6.1, no camber) ---
 
   // Longitudinal
@@ -262,6 +264,14 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("camera_range",                  JgetReqSafe(J,"vision.camera_range"));
   P.add("vision_noise_a",                JgetReqSafe(J,"vision.vision_noise_a"));
   P.add("vision_noise_b",                JgetReqSafe(J,"vision.vision_noise_b"));
+
+  // --- Metrics ---
+  P.add("kappa_slip_threshold", JgetReqSafe(J,"metrics.kappa_slip_threshold"));
+  P.add("slip_angle_slip_threshold", JgetReqSafe(J,"metrics.slip_angle_slip_threshold"));
+  P.add("slip_body_slip_threshold", JgetReqSafe(J,"metrics.slip_body_slip_threshold"));
+  P.add("max_track_violation", JgetReqSafe(J,"metrics.max_track_violation"));
+  P.add("max_yaw_rate_factor_violation", JgetReqSafe(J,"metrics.max_yaw_rate_factor_violation"));
+
 
   return P;
 }

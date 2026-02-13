@@ -274,6 +274,19 @@ Simulation_lem_ros_node::~Simulation_lem_ros_node() {
 // ====== Interfejs publiczny ======
 void Simulation_lem_ros_node::step() {
     try {
+       
+            if (crashed_ && !shutdown_requested_)
+            {
+                shutdown_requested_ = true;
+                ROS_ERROR_STREAM("[CRASH] " << crash_reason_
+                                 << " | step=" << crash_step_
+                                 << " | t=" << crash_time_s_ << " s"
+                                 << " -> shutting down ROS node.");
+                ros::shutdown();
+                return;
+            }
+        
+
         read_control_by_dv_board_if_due();
         read_wheel_encoder_if_due_();
         read_ins_if_due_();
@@ -968,8 +981,15 @@ void Simulation_lem_ros_node::pub_full_state_(){
     const double kappa_max_abs_signed =
     (std::abs(msg.kappa_rr) > std::abs(msg.kappa_rl)) ? msg.kappa_rr : msg.kappa_rl;
 
+    kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rl ) - P_.get("kappa_slip_threshold"));
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_fr)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rl)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rr)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_body_metric_ += std::max(0.0, std::abs(msg.slip_angle_body)*180.0/M_PI - P_.get("slip_body_slip_threshold")) *  msg.step_dt ;
+
     update_top_abs(ten_biggest_slip_ratio_, kappa_max_abs_signed, 10);
     update_top_abs(ten_biggest_beta_angle_, msg.slip_angle_body, 10);
+    // update_kappa_
 
     const double beta_thresh = 9.0 ;
     if (std::abs(msg.slip_angle_body) > beta_thresh) {
@@ -1091,9 +1111,42 @@ void Simulation_lem_ros_node::log_metric_of_ride_data_()
         return oss.str();
     };
 
-    // CSV: proste "metric,value" - łatwe do parsowania i czytania
+    // CSV-safe string: " -> "" i całe pole w cudzysłów
+    auto csv_quote = [](const std::string& s) -> std::string
+    {
+        std::string out;
+        out.reserve(s.size() + 2);
+        out.push_back('"');
+        for (char c : s) {
+            if (c == '"') out += "\"\"";
+            else out.push_back(c);
+        }
+        out.push_back('"');
+        return out;
+    };
+
+    // CSV: proste "metric,value"
     f << "metric,value\n";
 
+    // ==========================================================
+    // CRASH INFO (NEW)
+    // ==========================================================
+    // Jeśli nie było crasha -> wpisz sensowne defaulty, żeby parser zawsze miał te pola
+    f << "crashed," << (crashed_ ? 1 : 0) << "\n";
+
+    if (crashed_) {
+        f << "crash_reason,"  << csv_quote(crash_reason_) << "\n";
+        f << "crash_step,"    << crash_step_ << "\n";
+        f << "crash_time_s,"  << crash_time_s_ << "\n";
+    } else {
+        f << "crash_reason,"  << csv_quote("") << "\n";
+        f << "crash_step,"    << -1 << "\n";
+        f << "crash_time_s,"  << -1.0 << "\n";
+    }
+
+    // ==========================================================
+    // NORMAL METRICS
+    // ==========================================================
     f << "total_time_s," << total_time << "\n";
     f << "ey_avg_m,"      << ey_avg_   << "\n";
     f << "epsi_avg_rad,"  << epsi_avg_ << "\n";
@@ -1104,11 +1157,22 @@ void Simulation_lem_ros_node::log_metric_of_ride_data_()
     f << "time_beta_over_9deg_s," << time_beta_over_9_ << "\n";
     f << "beta_over_9deg_percent," << percetage_of_time_beta_over_9_ << "\n";
 
-    // Top 10 listy jako jedna komórka (bezpieczne i wygodne)
+    // Top 10 listy jako jedna komórka
     f << "ten_biggest_slip_ratio," << "\"" << join_vec(ten_biggest_slip_ratio_) << "\"\n";
     f << "ten_biggest_beta_angle," << "\"" << join_vec(ten_biggest_beta_angle_) << "\"\n";
     f << "ten_biggest_ey,"         << "\"" << join_vec(ten_biggest_ey_) << "\"\n";
     f << "ten_biggest_epsi,"       << "\"" << join_vec(ten_biggest_epsi_) << "\"\n";
+
+    // Uwaga: dzielenie przez total_time -> zabezpiecz
+    if (total_time > 1e-9) {
+        f << "kappa_metric,"       << (kappa_metric_ / total_time) << "\n";
+        f << "slip_angle_metric,"  << (slip_angle_metric_ / total_time) << "\n";
+        f << "slip_body_metric,"   << (slip_body_metric_ / total_time) << "\n";
+    } else {
+        f << "kappa_metric,"       << 0.0 << "\n";
+        f << "slip_angle_metric,"  << 0.0 << "\n";
+        f << "slip_body_metric,"   << 0.0 << "\n";
+    }
 
     f.flush();
     f.close();
@@ -1118,17 +1182,71 @@ void Simulation_lem_ros_node::log_metric_of_ride_data_()
 
 void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug::ConstPtr& msg)
 {
-    // Avg (z kontrolera)
+    // ----- Twoje metryki jak wcześniej -----
     epsi_avg_ = msg->epsi_avg;
     ey_avg_   = msg->ey_avg;
-    vs_avg_   = msg->v_s_avg;   // albo msg->v_ref jeśli chcesz referencję
+    vs_avg_   = msg->v_s_avg;
 
-    // Current -> top10 (po module)
     update_top_abs(ten_biggest_ey_,   std::abs(msg->ey_current));
     update_top_abs(ten_biggest_epsi_, std::abs(msg->epsi_current));
+
+    // ======================================================
+    // CRASH CONDITIONS
+    // ======================================================
+    if (crashed_) return; // już oznaczony, nic więcej
+
+    // 1) MPC solver failed
+    if (msg->solver_failed)
+    {
+        mark_crash_("mpc_solver_failed=1");
+        return;
+    }
+
+    // 2) yaw-rate sanity vs curvature yaw-rate
+    //    (ty pisałeś: jeśli MPC yaw_rate dużo większy niż z krzywizny => crash)
+    const double yr_mpc = state_.yaw_rate ;                 // <- upewnij się jak to się nazywa u Ciebie
+    const double yr_curv = msg->mpc_yaw_rate_from_curvature; // masz w kodzie
+
+    const double factor = P_.get("max_yaw_rate_factor_violation"); // np. 2.5
+    const double eps = 1e-6;
+    if (std::abs(yr_mpc) > factor * (std::abs(yr_curv) + eps) && yr_mpc > 1.5 )
+    {
+        std::ostringstream oss;
+        oss << "yaw_rate_violation: |yr_mpc|=" << std::abs(yr_mpc)
+            << " > " << factor << "*(|yr_curv|+eps)=" << factor*(std::abs(yr_curv)+eps);
+        mark_crash_(oss.str());
+        return;
+    }
+
+    // 3) track violation (Twoja idea z geometrią auta)
+    //    Warunek: auto (prostokąt przybliżony) musi mieścić się w "max_track_violation"
+    const double ey   = msg->ey_current;
+    const double epsi = msg->epsi_current;
+
+    const double L = P_.get("car_length");   // dodaj w paramach jeśli nie masz
+    const double W = P_.get("car_width");    // dodaj w paramach jeśli nie masz
+    const double track_margin = P_.get("max_track_violation") + 1.5; // jak w komentarzu
+
+    // “zapotrzebowanie” na szerokość w osi ey przez obrót auta:
+    // (Twoje: L*sin(|epsi|) + W*cos(epsi)  — sensownie jest brać |cos|, bo cos może być ujemny)
+    const double req = L/2.0 * std::sin(std::abs(epsi)) + W/2.0 * std::abs(std::cos(epsi));
+
+    const bool left_ok  = ( ey + req ) < track_margin;
+    const bool right_ok = (-ey + req ) < track_margin;
+
+    if (!left_ok || !right_ok)
+    {
+        std::ostringstream oss;
+        oss << "track_violation: ey=" << ey
+            << " epsi=" << epsi
+            << " req=" << req
+            << " margin=" << track_margin
+            << " left_ok=" << left_ok
+            << " right_ok=" << right_ok;
+        mark_crash_(oss.str());
+        return;
+    }
 }
-
-}// namespace lem_dynamics_sim_
-
+} // namespace lem_dynamics_sim
 
 

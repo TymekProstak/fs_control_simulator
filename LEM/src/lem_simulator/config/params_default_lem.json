@@ -22,40 +22,42 @@
     "angle_construction_front": 0.682622552,
     "angle_construction_rear": 0.636188625,
     "r_front": 0.951,
-    "r_rear": 0.969
+    "r_rear": 0.969,
+    "length": 2.8,
+    "width": 1.45
   },
 
 "tire": {
   "pCx1": 1.5000,
-  "pDx1": 1.5314 	,
-  "pDx2": -0.4747,
+  "pDx1": 2.6464 	,
+  "pDx2": -0.3221,
   "pEx1": 0.0000	,
-  "pEx2": 0.4038	,
-  "pEx3": -0.0536,
-  "pEx4": 0.1795	,
-  "pKx1": 47.4233,
-  "pKx2": 2.9893	,
-  "pKx3": -0.2360,
+  "pEx2": 0.3461	,
+  "pEx3": 0.0704 ,
+  "pEx4": 0.3236,
+  "pKx1": 48.8439,
+  "pKx2": -0.0023	,
+  "pKx3": -0.1694,
   "pHx1": 0.0026	,
-  "pHx2": -0.0006,
-  "pVx1": -0.0993,
-  "pVx2": 0.0096,
-  "lambda_x": 1.00,
+  "pHx2": -0.0002,
+  "pVx1": -0.0874,
+  "pVx2": -0.005,
+  "lambda_x": 0.66,
 
   "pCy1": 1.5000,
-  "pDy1": 1.6502 	,
-  "pDy2": -0.1994,
+  "pDy1": 2.6319,	
+  "pDy2": -0.1946,
   "pEy1": 0.5,
-  "pEy2": -0.0028,
+  "pEy2": -0.0,
   "pEy3": 0.0,
-  "pKy1": 54.6284,
-  "pKy2": 2.6155,
+  "pKy1": 59.1707,
+  "pKy2": 2.5329,
   "pKy4": 2.0000,
-  "pHy1": -0.0012,
-  "pHy2": 0.0002,
-  "pVy1": -0.0341,
-  "pVy2": 0.0141,
-  "lambda_y": 1.00,
+  "pHy1": 0.0016,
+  "pHy2": 0.0003,
+  "pVy1": 0.0613,
+  "pVy2": -0.0077,
+  "lambda_y": 0.66,
 
   "N0": 490,
   "epsilon": 1.0,
@@ -66,7 +68,7 @@
 },
   "drivetrain": {                        
     "P_max_drive": 80000,
-    "P_min_recup": -20000,
+    "P_min_recup": -80000,
     "drivetrain_timescale": 0.025,
     "max_torque" : 466.25,
     "min_torque" : -466.25
@@ -150,5 +152,13 @@
     "camera_range": 16.5,
     "vision_noise_a": 3.0,
     "vision_noise_b": 0.16
+  },
+
+  "metrics": {
+    "kappa_slip_threshold": 0.12,
+    "slip_angle_slip_threshold": 7.0,
+    "slip_body_slip_threshold": 9.0,
+    "max_track_violation": 0.2,
+    "max_yaw_rate_factor_violation": 4.0
   }
 }

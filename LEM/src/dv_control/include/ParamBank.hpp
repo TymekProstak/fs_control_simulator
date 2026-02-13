@@ -1,11 +1,21 @@
 #pragma once
-#include <nlohmann/json.hpp>
-#include <unordered_map>
+#include <Eigen/Dense>
+
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <stdexcept>
-#include <cmath>
-#include <iostream>
+
+#include <nlohmann/json.hpp>
+
+#include "spline.hpp"
 
 namespace v2_control {
 
@@ -146,14 +156,77 @@ inline ParamBank build_param_bank(const nlohmann::json& J) {
   // --- Velocity Planner Parameters ---
   P.add("vel_planner_max_accel", JgetReq(J, "velocity_planner.max_accel"));
   P.add("vel_planner_max_decel", JgetReq(J, "velocity_planner.max_decel"));
+  P.add("vel_planner_mux_acc", P.get("vel_planner_max_accel") / 9.81);
+  P.add("vel_planner_mux_dec", P.get("vel_planner_max_decel") / 9.81);
   P.add("vel_planner_v_min", JgetReq(J, "velocity_planner.v_min"));
   P.add("vel_planner_v_max", JgetReq(J, "velocity_planner.v_max"));
   P.add("vel_planner_max_corrnering_accel", JgetReq(J, "velocity_planner.max_corrnering_accel"));
+  P.add("vel_planner_muy" , P.get("vel_planner_max_corrnering_accel") / 9.81);
   P.add("vel_planner_saftey_factor", JgetReq(J, "velocity_planner.saftey_factor"));
   P.add("vel_planner_max_jerk", JgetReq(J, "velocity_planner.max jerk"));
   P.add("vel_planner_spatial_step", JgetReq(J, "velocity_planner.spatial_step"));
   P.add("vel_planner_number_of_jerk_merging_iterations", JgetReq(J, "velocity_planner.number_of_jerk_merging_iterations"));
   P.add("vel_planner_smoothing_factor", JgetReq(J, "velocity_planner.smoothing_factor"));
+  P.add("vel_planner_Cl", JgetReq(J, "velocity_planner.Cl"));
+  P.add("vel_planner_m", JgetReq(J, "velocity_planner.m"));
+
+  //// --- Lap Time Optimizer (LTO) Parameters ---
+  P.add("lto_g", JgetReq(J, "mpc.lap_time_optimizer.lto_params.g"));
+  P.add("lto_v_min", JgetReq(J, "mpc.lap_time_optimizer.lto_params.v_min"));
+  P.add("lto_v_max", JgetReq(J, "mpc.lap_time_optimizer.lto_params.v_max"));
+  P.add("lto_lf", JgetReq(J, "mpc.lap_time_optimizer.lto_params.lf"));
+  P.add("lto_lr", JgetReq(J, "mpc.lap_time_optimizer.lto_params.lr"));
+  P.add("lto_ds" , JgetReq(J,"mpc.lap_time_optimizer.lto_params.ds"));
+
+  P.add("lto_Cm", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Cm")); // how -1.1 of throthle translets to force longitudal on axle
+  P.add("lto_Cr0", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Cr0"));
+  P.add("lto_Cl", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Cl"));
+
+  P.add("lto_max_drive_power", JgetReq(J, "mpc.lap_time_optimizer.lto_params.max_drive_power"));
+  P.add("lto_max_brake_power", JgetReq(J, "mpc.lap_time_optimizer.lto_params.max_brake_power"));
+
+  P.add("lto_max_tv", JgetReq(J, "mpc.lap_time_optimizer.lto_params.max_tv"));
+  P.add("lto_min_tv", JgetReq(J, "mpc.lap_time_optimizer.lto_params.min_tv"));
+
+  P.add("lto_max_delta", JgetReq(J, "mpc.lap_time_optimizer.lto_params.max_delta"));
+  P.add("lto_min_delta", JgetReq(J, "mpc.lap_time_optimizer.lto_params.min_delta"));
+
+  P.add("lto_max_d_delta", JgetReq(J, "mpc.lap_time_optimizer.lto_params.max_d_delta"));
+  P.add("lto_min_d_delta", JgetReq(J, "mpc.lap_time_optimizer.lto_params.min_d_delta"));
+
+  P.add("lto_max_d_T", JgetReq(J, "mpc.lap_time_optimizer.lto_params.max_d_T"));
+  P.add("lto_min_d_T", JgetReq(J, "mpc.lap_time_optimizer.lto_params.min_d_T"));
+
+  P.add("lto_Fz_nom", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Fz_nom"));
+
+  P.add("lto_ax_max", JgetReq(J, "mpc.lap_time_optimizer.lto_params.ax_max"));
+  P.add("lto_ay_max", JgetReq(J, "mpc.lap_time_optimizer.lto_params.ay_max"));
+
+
+  P.add("lto_mu_y", P.get("lto_ay_max")/P.get("lto_g") );
+  P.add("lto_mu_x", P.get("lto_ax_max")/P.get("lto_g"));
+
+  P.add("lto_Cf", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Cf"));
+  P.add("lto_Bf", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Bf"));
+  P.add("lto_Df", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Df"));
+
+  P.add("lto_Cr", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Cr"));
+  P.add("lto_Br", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Br"));
+  P.add("lto_Dr", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Dr"));
+
+  P.add("lto_length", JgetReq(J, "mpc.lap_time_optimizer.lto_params.length"));
+  P.add("lto_widith", JgetReq(J, "mpc.lap_time_optimizer.lto_params.widith"));
+  P.add("lto_track_width", JgetReq(J, "mpc.lap_time_optimizer.lto_params.track_width"));
+
+  P.add("lto_tv_cost", JgetReq(J, "mpc.lap_time_optimizer.lto_params.tv_cost"));
+  P.add("lto_d_delta_cost", JgetReq(J, "mpc.lap_time_optimizer.lto_params.d_delta_cost"));
+  P.add("lto_d_T_cost", JgetReq(J, "mpc.lap_time_optimizer.lto_params.d_T_cost"));
+  P.add("lto_beta_cost", JgetReq(J, "mpc.lap_time_optimizer.lto_params.beta_cost"));
+  P.add("lto_s_dot_cost", JgetReq(J, "mpc.lap_time_optimizer.lto_params.s_dot_cost"));
+
+  P.add("lto_m", JgetReq(J, "mpc.lap_time_optimizer.lto_params.m"));
+  P.add("lto_Iz", JgetReq(J, "mpc.lap_time_optimizer.lto_params.Iz"));
+
   return P;
 }
 

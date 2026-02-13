@@ -8,7 +8,7 @@
 
 #include <ros/ros.h>
 
-#include "spline.hpp"       // TrackSpline2D
+#include "spline.hpp"       // TrackSpline2D  (ma signedNormalDistance)
 #include "ParamBank.hpp"
 #include "Vec2.hpp"
 #include "mpc_interface.hpp"
@@ -40,7 +40,8 @@ struct PathProcessResult
     bool mpc_eligible = false;
     bool all_path_eligible = false;
 
-    double yaw0 = 0.0;
+    double yaw_vehicle_projection = 0.0;
+    double normal_distance_to_path = 0.0;
 };
 
 struct Poly_with_kappa
@@ -68,6 +69,33 @@ static inline double yawFrom2Pts(const Vec2& p0, const Vec2& p1)
     return yawFrom2Pts((double)p0.x, (double)p0.y, (double)p1.x, (double)p1.y);
 }
 
+// signed "normal-ish" distance to a segment (fallbacks, straight line)
+// sign: + if P is on "left" side of AB
+static inline double signedDistPointToSegment(const Vec2& A, const Vec2& B, const Vec2& P)
+{
+    const Vec2 AB = B - A;
+    const double len = std::hypot((double)AB.x, (double)AB.y);
+    if (len < 1e-12) return 0.0;
+
+    // projection t clamped
+    const double len2 = (double)AB.x*(double)AB.x + (double)AB.y*(double)AB.y;
+    double t = 0.0;
+    if (len2 > 1e-12) {
+        t = (((double)P.x - (double)A.x)*(double)AB.x + ((double)P.y - (double)A.y)*(double)AB.y) / len2;
+        t = std::clamp(t, 0.0, 1.0);
+    }
+
+    const Vec2 proj((float)((double)A.x + t*(double)AB.x),
+                    (float)((double)A.y + t*(double)AB.y));
+
+    // signed perpendicular distance (for clamped ends it becomes "signed distance to proj point")
+    const double cross = (double)AB.x * ((double)P.y - (double)proj.y) - (double)AB.y * ((double)P.x - (double)proj.x);
+    const double sign = (cross >= 0.0) ? 1.0 : -1.0;
+
+    const double d = std::hypot((double)P.x - (double)proj.x, (double)P.y - (double)proj.y);
+    return sign * d;
+}
+
 // =====================================================
 // Segment projection utilities
 // =====================================================
@@ -78,7 +106,7 @@ static inline double find_t_on_segment(const Vec2& A, const Vec2& B, const Vec2&
     if (len2 < 1e-12) return 0.0;
 
     const double t = ((P.x - A.x)*AB.x + (P.y - A.y)*AB.y) / len2;
-    return t; // ja celowo nie clampuję: t<0 i t>1 jest mi potrzebne do wykrywania “przed startem / po końcu”
+    return t; // celowo bez clamp
 }
 
 static inline Vec2 projectPointOnSegment_clamped01(const Vec2& A, const Vec2& B, const Vec2& P)
@@ -142,14 +170,17 @@ static inline PathProcessResult makeGeoInvalidResult()
     r.curv_eligible = false;
     r.mpc_eligible = false;
     r.all_path_eligible = false;
+    r.yaw_vehicle_projection = 0.0;
+    r.normal_distance_to_path = 0.0;
     return r;
 }
 
 static inline PathProcessResult makeCurvInvalidResult(
     const Eigen::VectorXd& X,
     const Eigen::VectorXd& Y,
-    double yaw0,
-    const ParamBank& P)
+    double yaw_vehicle_projection,
+    const ParamBank& P,
+    double normal_distance_to_path)
 {
     PathProcessResult r;
     const int N = (int)X.size();
@@ -168,14 +199,16 @@ static inline PathProcessResult makeCurvInvalidResult(
     r.mpc_eligible = false;
     r.all_path_eligible = false;
 
-    r.yaw0 = yaw0;
+    r.yaw_vehicle_projection = yaw_vehicle_projection;
+    r.normal_distance_to_path = normal_distance_to_path;
     return r;
 }
 
 static inline PathProcessResult makeCurvInvalidResult(
     const std::vector<Vec2>& path,
-    double yaw0,
-    const ParamBank& P)
+    double yaw_vehicle_projection,
+    const ParamBank& P,
+    double normal_distance_to_path)
 {
     const int N = (int)path.size();
     if (N < 2) return makeGeoInvalidResult();
@@ -185,13 +218,14 @@ static inline PathProcessResult makeCurvInvalidResult(
         X(i) = (double)path[i].x;
         Y(i) = (double)path[i].y;
     }
-    return makeCurvInvalidResult(X, Y, yaw0, P);
+    return makeCurvInvalidResult(X, Y, yaw_vehicle_projection, P, normal_distance_to_path);
 }
 
 static inline PathProcessResult makeResultFromPolyWithKappa(
     const Poly_with_kappa& poly,
-    double yaw0,
-    const ParamBank& P)
+    double yaw_vehicle_projection,
+    const ParamBank& P,
+    double normal_distance_to_path)
 {
     PathProcessResult r;
     const int N = (int)poly.path.size();
@@ -216,9 +250,11 @@ static inline PathProcessResult makeResultFromPolyWithKappa(
     r.valid = true;
     r.geo_eligible = true;
     r.curv_eligible = true;
-    r.mpc_eligible = false;      // open path → ja zostawiam geo-only, tak jak miałeś
+    r.mpc_eligible = false;      // open path → geo-only jak miałeś
     r.all_path_eligible = false;
-    r.yaw0 = yaw0;
+
+    r.yaw_vehicle_projection = yaw_vehicle_projection;
+    r.normal_distance_to_path = normal_distance_to_path;
     return r;
 }
 
@@ -301,7 +337,6 @@ static inline Poly_with_kappa sample_open_spline_to_poly_with_kappa(
 // =====================================================
 // Polyline modification along spline tangents
 // =====================================================
-
 static inline Vec2 unitTangentFromYaw(double yaw)
 {
     return Vec2((float)std::cos(yaw), (float)std::sin(yaw));
@@ -324,23 +359,23 @@ static inline Vec2 tangentAtEnd(const TrackSpline2D& sp)
 static inline void add_extra_point_before_start_along_spline_tangent(
     Poly_with_kappa& poly,
     const TrackSpline2D& sp,
-    double distance,const ParamBank& P)
+    double distance, const ParamBank& P)
 {
     if (poly.path.size() < 2) return;
 
     Vec2 p0 = sp.eval(0.0);
-    Vec2 t0 = tangentAtStart(sp); // jednostkowy wektor styczny na początku
+    Vec2 t0 = tangentAtStart(sp);
     const double ds = P.get("distance_between_interpoleted_points");
     int number_of_points = (int)std::ceil(distance / ds);
     if (number_of_points < 1) number_of_points = 1;
-    for(int i = 1; i <= number_of_points; ++i) {
+
+    for (int i = 1; i <= number_of_points; ++i) {
         Vec2 newp;
         newp.x = p0.x - t0.x * (float)(ds * i);
         newp.y = p0.y - t0.y * (float)(ds * i);
         poly.path.insert(poly.path.begin(), newp);
-        poly.kappa.insert(poly.kappa.begin(), 0.0); // dobudowane -> kappa=0
+        poly.kappa.insert(poly.kappa.begin(), 0.0);
     }
-
 }
 
 static inline void add_extra_point_after_end_along_spline_tangent(
@@ -353,22 +388,21 @@ static inline void add_extra_point_after_end_along_spline_tangent(
 
     const double L = sp.totalLength();
     Vec2 pL = sp.eval(L);
-    Vec2 tL = tangentAtEnd(sp); // jednostkowy wektor styczny na końcu
+    Vec2 tL = tangentAtEnd(sp);
 
     const double ds = P.get("distance_between_interpoleted_points");
     int number_of_points = (int)std::ceil(distance / ds);
     if (number_of_points < 1) number_of_points = 1;
-    for(int i = 1; i <= number_of_points; ++i) {
+
+    for (int i = 1; i <= number_of_points; ++i) {
         Vec2 newp;
         newp.x = pL.x + tL.x * (float)(ds * i);
         newp.y = pL.y + tL.y * (float)(ds * i);
 
         poly.path.push_back(newp);
-        poly.kappa.push_back(0.0); // dobudowane -> kappa=0
+        poly.kappa.push_back(0.0);
     }
-
 }
-
 
 // =====================================================
 // Straight line handler (2 points)
@@ -394,12 +428,11 @@ static inline PathProcessResult path_procces_straight_line_2_points(
         return makeGeoInvalidResult();
     }
 
-    const double t = find_t_on_segment(
-        Vec2((float)p0_x, (float)p0_y),
-        Vec2((float)p1_x, (float)p1_y),
-        Vec2((float)bolide_state.X, (float)bolide_state.Y)
-    );
+    const Vec2 q((float)bolide_state.X, (float)bolide_state.Y);
+    const Vec2 A((float)p0_x, (float)p0_y);
+    const Vec2 B((float)p1_x, (float)p1_y);
 
+    const double t = find_t_on_segment(A, B, q);
     const double dist_to_p1 = -(t - 1.0) * L;
 
     double L_new = L;
@@ -408,29 +441,30 @@ static inline PathProcessResult path_procces_straight_line_2_points(
     if (t > 1.0)
         L_new += P.get("min_path_length_for_geo") - dist_to_p1;
 
+    // normal distance: signed distance to the segment AB (fallback)
+    const double normal_distance_to_path = signedDistPointToSegment(A, B, q);
 
-    if(t >= 0.0) {
-        
+    if (t >= 0.0) {
+
         const size_t pts_number = (size_t)std::ceil(L_new / ds) + 1;
         Eigen::VectorXd X_tmp((int)pts_number);
         Eigen::VectorXd Y_tmp((int)pts_number);
 
-        const double bolid_x_proj = p0_x + t * dx;;
+        const double bolid_x_proj = p0_x + t * dx;
         const double bolid_y_proj = p0_y + t * dy;
-    
+
         const double scale = L_new / L;
         for (size_t i = 0; i < pts_number; ++i) {
             const double u = (double)i / (double)(pts_number - 1);
             X_tmp((int)i) = bolid_x_proj + scale * u * dx;
             Y_tmp((int)i) = bolid_y_proj + scale * u * dy;
         }
-    
-        const double yaw0 = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
-        return makeCurvInvalidResult(X_tmp, Y_tmp, yaw0, P);
 
+        const double yaw_vehicle_projection = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
+        return makeCurvInvalidResult(X_tmp, Y_tmp, yaw_vehicle_projection, P, normal_distance_to_path);
     }
 
-    if(t < 0.0)
+    if (t < 0.0)
     {
         const double dist_to_p0 = -t * L;
         L_new += 0.5 + dist_to_p0;
@@ -438,19 +472,18 @@ static inline PathProcessResult path_procces_straight_line_2_points(
 
         Eigen::VectorXd X_tmp((int)pts_number);
         Eigen::VectorXd Y_tmp((int)pts_number);
-    
+
         const double scale = L_new / L;
         for (size_t i = 0; i < pts_number; ++i) {
             const double u = (double)i / (double)(pts_number - 1);
             X_tmp((int)i) = p0_x + scale * u * dx;
             Y_tmp((int)i) = p0_y + scale * u * dy;
         }
-        const double yaw0 = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
-        return makeCurvInvalidResult(X_tmp, Y_tmp, yaw0, P);
-        
+        const double yaw_vehicle_projection = yawFrom2Pts(p0_x, p0_y, p1_x, p1_y);
+        return makeCurvInvalidResult(X_tmp, Y_tmp, yaw_vehicle_projection, P, normal_distance_to_path);
     }
 
-  
+    return makeGeoInvalidResult();
 }
 
 // =====================================================
@@ -522,20 +555,38 @@ static inline PathProcessResult path_process_3_or_more_points_open_spline(
         linear_interpolate_path(base, P);
 
         const int ci = find_closest_segment_index(base, q);
-        if (ci < 0 || ci + 1 >= (int)base.size()) return makeGeoInvalidResult(); // should not happen
+        if (ci < 0 || ci + 1 >= (int)base.size()) return makeGeoInvalidResult();
 
-        const double yaw0 = yawFrom2Pts(base[ci], base[ci + 1]);
-        return makeCurvInvalidResult(base, yaw0, P);
+        const double yaw_vehicle_projection = yawFrom2Pts(base[ci], base[ci + 1]);
+        const double normal_distance_to_path = signedDistPointToSegment(base[ci], base[ci+1], q);
+
+        return makeCurvInvalidResult(base, yaw_vehicle_projection, P, normal_distance_to_path);
     }
 
-    // ---------- MAIN: spline valid -> sample -> closest on poly -> dobudowy ----------
+    // ---------- MAIN: spline valid -> yaw+normal via signedNormalDistance() + poly sampling/do-budowy ----------
     const double ds = P.get("distance_between_interpoleted_points");
     Poly_with_kappa poly = sample_open_spline_to_poly_with_kappa(sp, ds);
-    if (poly.size() < 2) return makeGeoInvalidResult(); // should not happen
-    
+    if (poly.size() < 2) return makeGeoInvalidResult();
+
+    // --- s_init z coarse poly (tylko start dla projekcji) ---
+    int closest_i0 = find_closest_segment_index(poly.path, q);
+    if (closest_i0 < 0) closest_i0 = 0;
+    const double Ls = sp.totalLength();
+    double s_init = (double)closest_i0 * ds;
+    s_init = std::clamp(s_init, 0.0, std::max(0.0, Ls));
+
+    // --- projekcja + signed normal distance (w 1 funkcji) ---
+    double s_proj = s_init;
+    const double normal_distance_to_path =
+        sp.signedNormalDistance(q, s_init, 5.0, 51, 12, &s_proj, nullptr);
+
+    // --- yaw w punkcie projekcji ---
+    const double yaw_vehicle_projection = sp.getYaw(s_proj);
+
+    // --- dobudowy punktów (geo) tak jak miałeś ---
     int closest_i = find_closest_segment_index(poly.path, q);
-    if (closest_i < 0 || closest_i + 1 >= (int)poly.size()) return makeGeoInvalidResult(); // should not happen
-    // i==0: sprawdź czy auto przed początkiem
+    if (closest_i < 0 || closest_i + 1 >= (int)poly.size()) return makeGeoInvalidResult();
+
     if (closest_i == 0)
     {
         const double t = find_t_on_segment(poly.path[0], poly.path[1], q);
@@ -546,7 +597,6 @@ static inline PathProcessResult path_process_3_or_more_points_open_spline(
         }
     }
 
-    // i==last: auto za końcem
     if (closest_i == (int)poly.size() - 2)
     {
         const int n = (int)poly.size();
@@ -559,12 +609,7 @@ static inline PathProcessResult path_process_3_or_more_points_open_spline(
         }
     }
 
-    // yaw0 bierzemy z polilinii po dobudowach
-    closest_i = find_closest_segment_index(poly.path, q);
-    if (closest_i < 0 || closest_i + 1 >= (int)poly.size()) return makeGeoInvalidResult(); // should not happen
-    const double yaw0 = yawFrom2Pts(poly.path[closest_i], poly.path[closest_i + 1]);
-
-    return makeResultFromPolyWithKappa(poly, yaw0, P);
+    return makeResultFromPolyWithKappa(poly, yaw_vehicle_projection, P, normal_distance_to_path);
 }
 
 // =====================================================
@@ -742,8 +787,8 @@ static inline void fullBackwardPass_fix(
 
         const double a_brake = -longAvail(v1, k1, a_dec_max, a_lat_max); // <=0
 
-        const double v0_max  = safeSqrt(v1*v1 - 2.0*a_brake*ds);  
-        v[i-1] = std::min(v[i-1], v0_max);  
+        const double v0_max  = safeSqrt(v1*v1 - 2.0*a_brake*ds);
+        v[i-1] = std::min(v[i-1], v0_max);
         a[i-1] = (v1*v1 - v[i-1]*v[i-1]) / (2.0*ds);
         is_valid[i-1] = true;
     }
@@ -939,13 +984,13 @@ static inline SpeedProfileGeom forward_backward_pass_with_jerk_full_backward(
             v, a, is_valid);
     }
 
-    const double smooth_jerk_up = jerk_up * 1.0/P.get("vel_planner_smoothing_factor");
-    const double smooth_jerk_down = jerk_down * 1.0/P.get("vel_planner_smoothing_factor");
+    const double smooth_jerk_up   = jerk_up   * 1.0 / P.get("vel_planner_smoothing_factor");
+    const double smooth_jerk_down = jerk_down * 1.0 / P.get("vel_planner_smoothing_factor");
     final_jerkForwardClamp(
         prof.kappa, vsat,
         ds_geom,
         a_acc_max, a_dec_max, a_lat_max,
-        smooth_jerk_up,smooth_jerk_down,
+        smooth_jerk_up, smooth_jerk_down,
         a0_along,
         v, a, is_valid);
 
@@ -1010,33 +1055,6 @@ static inline Profile_at_single_point profile_atDistance(const SpeedProfileGeom&
     return res;
 }
 
-static inline void logFrictionUseEllipse_Planned(
-    int k,
-    double v_plan,
-    double kappa_plan,
-    double a_lat_plan,
-    double a_long_plan,
-    double a_acc_max,
-    double a_dec_max,
-    double a_lat_max
-)
-{
-    const double lat_den  = std::max(1e-9, a_lat_max);
-    const double long_den = std::max(1e-9, (a_long_plan >= 0.0 ? a_acc_max : a_dec_max));
-
-    const double u_lat  = a_lat_plan  / lat_den;
-    const double u_long = a_long_plan / long_den;
-
-    const double usage = u_lat*u_lat + u_long*u_long;
-
-    (void)k;
-    (void)v_plan;
-    (void)kappa_plan;
-    (void)usage;
-    (void)u_lat;
-    (void)u_long;
-}
-
 // =====================================================
 // FINAL: all_path + velocity planner (closed loop)
 // =====================================================
@@ -1062,10 +1080,10 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
 
     const double ds_geom = P.get("vel_planner_spatial_step");
     const double ds_mpc  = P.get("mpc_spatial_step");
-    (void)ds_mpc; // zostawiam, bo u Ciebie było (na razie nie używasz)
+    (void)ds_mpc;
 
-    const double a_acc_max_raw = P.get("vel_planner_max_accel");                 // +
-    const double a_dec_max_raw = P.get("vel_planner_max_decel");                 // + (magnitude)
+    const double a_acc_max_raw = P.get("vel_planner_max_accel");
+    const double a_dec_max_raw = P.get("vel_planner_max_decel");
     const double v_min_raw     = P.get("vel_planner_v_min");
     const double v_max_raw     = P.get("vel_planner_v_max");
     const double a_lat_max_raw = P.get("vel_planner_max_corrnering_accel");
@@ -1085,7 +1103,7 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
 
     const double mpc_dt = 1.0 / P.get("odom_frequency");
 
-    // ---- find s0 (coarse + project) ----
+    // ---- find s_init guess (coarse) ----
     const Vec2 q((float)bolide_state.X, (float)bolide_state.Y);
 
     double s_guess = 0.0;
@@ -1101,11 +1119,16 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
             if (d2 < best_d2) { best_d2 = d2; s_guess = s; }
         }
     }
-    const double s0 = spline_closed.projectToS(q, s_guess, 8.0, 61, 8);
 
-    // ---- yaw0 ----
-    const double yaw0 = spline_closed.getYaw(s0);
-    out.yaw0 = yaw0;
+    // ---- signed normal distance + s_proj (używam Twojej funkcji) ----
+    double s0 = s_guess;
+    const double normal_distance_to_path =
+        spline_closed.signedNormalDistance(q, s_guess, 8.0, 61, 10, &s0, nullptr);
+
+    // ---- yaw_vehicle_projection z s0 ----
+    const double yaw_vehicle_projection = spline_closed.getYaw(s0);
+    out.yaw_vehicle_projection = yaw_vehicle_projection;
+    out.normal_distance_to_path = normal_distance_to_path;
 
     // ---- v0 along ----
     double v0_along = bolide_state.vx;
@@ -1187,7 +1210,7 @@ inline PathProcessResult path_process_for_control(
     const Eigen::VectorXd& X_path,
     const Eigen::VectorXd& Y_path,
     const State& bolide_state,
-     const Vec2& prev_last, bool prev_last_valid = false,bool all_path_eligible_flag = false )
+    const Vec2& prev_last, bool prev_last_valid = false, bool all_path_eligible_flag = false)
 {
     if (X_path.size() != Y_path.size()) {
         ROS_WARN_STREAM("[PathProcessing] INVALID: X_path.size() != Y_path.size()");
@@ -1234,44 +1257,38 @@ inline PathProcessResult path_process_for_control(
     if (Nraw == 1) {
 
         if (prev_last_valid) {
-    
+
             const double bx = bolide_state.X;
             const double by = bolide_state.Y;
-    
+
             const double x_prev = (double)prev_last.x;
             const double y_prev = (double)prev_last.y;
-    
+
             const double x_new  = (double)X_path(0);
             const double y_new  = (double)Y_path(0);
-    
+
             const double d2_prev = (x_prev - bx)*(x_prev - bx) + (y_prev - by)*(y_prev - by);
             const double d2_new  = (x_new  - bx)*(x_new  - bx) + (y_new  - by)*(y_new  - by);
-    
-            // ------------------------------------------------------------
-            // path_procces_straight_line_2_points() zakłada, że:
-            // p0 = bliżej auta, p1 = dalej (czyli "do przodu" w sensie geometrii)
-            // ------------------------------------------------------------
+
             Eigen::VectorXd X_single(2);
             Eigen::VectorXd Y_single(2);
-    
+
             if (d2_prev <= d2_new) {
-                // prev jest bliżej -> prev jako p0, nowy jako p1
                 X_single(0) = x_prev;
                 Y_single(0) = y_prev;
                 X_single(1) = x_new;
                 Y_single(1) = y_new;
             } else {
-                // nowy jest bliżej -> nowy jako p0, prev jako p1
                 X_single(0) = x_new;
                 Y_single(0) = y_new;
                 X_single(1) = x_prev;
                 Y_single(1) = y_prev;
             }
-    
+
             ROS_WARN_STREAM("[PathProcessing] Nraw == 1, prev point valid -> building 2-point line (sorted by distance to bolide).");
             return path_procces_straight_line_2_points(X_single, Y_single, bolide_state, P);
         }
-    
+
         ROS_WARN_STREAM("[PathProcessing] INVALID: Nraw == 1 and no valid previous last point.");
         return PathProcessResult{};
     }

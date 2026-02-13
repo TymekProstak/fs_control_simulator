@@ -167,7 +167,8 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
     ref_path = path_process_for_control(param_, X_last_from_pp, Y_last_from_pp,current_state,  prev_last_point_, prev_last_point_valid_, all_path_recived);
     all_path_recived = ref_path.all_path_eligible; // if path processing decided path is not eligible, reset flag
     int rozmiar_po_procesowaniu = ref_path.X_ref.size();
-    path_yaw_ = ref_path.yaw0;
+    path_yaw_ = ref_path.yaw_vehicle_projection;
+    ey_ = ref_path.normal_distance_to_path;
 
     //pure_pursit.setTrack(ref_path.X_ref, ref_path.Y_ref);
     // if(rozmiar_przed_procesowaniem > rozmiar_po_procesowaniu){
@@ -210,6 +211,7 @@ void Controller::odometryCallback(const nav_msgs::Odometry &msg)
             // gałąź awaryjna – MPC się zepsuł
             else {
                 ROS_WARN_STREAM("[MPC] Solver failed. Switching to geometric controller.");
+                solver_failed_ = true;
                 stanley.setTrack(ref_path.X_ref, ref_path.Y_ref);
                 convert_state_to_mpc_state();
                 geometricControl();
@@ -537,10 +539,6 @@ void Controller::convert_state_to_mpc_state()
     // =========================
     // 1) closest-point w oknie
     // =========================
-
-
-
-
     int idx_closest = 0;
     double min_dist = std::numeric_limits<double>::max();
 
@@ -612,22 +610,9 @@ void Controller::convert_state_to_mpc_state()
     }
 
 
-    // =========================
-    // 3) path_yaw, ey, epsi
-    // =========================
    
-
-    const double dX_proj = current_state.X - proj_X;
-    const double dY_proj = current_state.Y - proj_Y;
-
-    const double sin_psi = std::sin(path_yaw_);
-    const double cos_psi = std::cos(path_yaw_);
-
-    const double ey   = dY_proj * cos_psi - dX_proj * sin_psi;
-    const double epsi = wrap_to_pi(current_state.yaw - path_yaw_);
-
     // =========================
-    // 4) Δey, Δepsi (vs poprzednia iteracja) + logika skoków
+    // 5) Zapis do mpc_state
     // =========================
     static bool   have_prev = false;
     static double ey_prev   = 0.0;
@@ -635,62 +620,19 @@ void Controller::convert_state_to_mpc_state()
     static int    seg_i0_prev = -1;
     static int    seg_i1_prev = -1;
 
-    double d_ey = 0.0;
-    double d_epsi = 0.0;
-
-    if (have_prev) {
-        d_ey   = ey - ey_prev;
-        d_epsi = wrap_to_pi(epsi - epsi_prev); // ważne przy przejściu przez +/-pi
-    }
-
-    // progi “skoku” (dostosuj do dt i typowego noise)
-    const double EY_JUMP_TH   = 0.30;  // [m]
-    const double EPSI_JUMP_TH = 0.15;  // [rad]
-
-    const bool seg_changed = (seg_i0_prev != best_i0) || (seg_i1_prev != best_i1);
-    const bool jump = have_prev && (std::abs(d_ey) > EY_JUMP_TH || std::abs(d_epsi) > EPSI_JUMP_TH);
-
-    // =========================
-    // 5) Zapis do mpc_state
-    // =========================
-    mpc_state.ey   = ey;
+    mpc_state.ey   = ey_;
+    double epsi = wrap_to_pi(current_state.yaw - path_yaw_);
     mpc_state.epsi = epsi;
     mpc_state.r    = current_state.yaw_rate;
     mpc_state.vy   = current_state.vy;
 
-    // =========================
-    // 6) LOGI (throttle + event-based)
-    // =========================
-    // 1) normal debug rzadko
-    // ROS_INFO_STREAM_THROTTLE(0.2,
-    //     "[MPC PROJ] idx_closest=" << idx_closest
-    //     << " seg=(" << best_i0 << "," << best_i1 << ")"
-    //     << " t=" << t
-    //     << " path_yaw=" << path_yaw_
-    //     << " ey=" << ey << " epsi=" << epsi
-    //     << " d_ey=" << d_ey << " d_epsi=" << d_epsi
-    //     << " seg_changed=" << (seg_changed ? 1 : 0)
-    // );
-
-    // 2) gdy wykryję skok — WARN natychmiast
-    // if (jump) {
-    //     ROS_WARN_STREAM(
-    //         "[MPC JUMP] d_ey=" << d_ey << " (ey=" << ey_prev << "->" << ey << ")"
-    //         << " | d_epsi=" << d_epsi << " (epsi=" << epsi_prev << "->" << epsi << ")"
-    //         << " | idx_closest=" << idx_closest
-    //         << " | seg=(" << best_i0 << "," << best_i1 << ")"
-    //         << " | seg_changed=" << (seg_changed ? 1 : 0)
-    //         << " | car_xy=(" << current_state.X << "," << current_state.Y << ")"
-    //         << " | proj_xy=(" << proj_X << "," << proj_Y << ")"
-    //     );
-    // }
-
+  
     ey_count++;
-    ey_sum += std::abs(ey);
+    ey_sum += std::abs(ey_);
     epsi_sum += std::abs(epsi);
     // update prev
     have_prev   = true;
-    ey_prev     = ey;
+    ey_prev     = ey_;
     epsi_prev   = epsi;
     seg_i0_prev = best_i0;
     seg_i1_prev = best_i1;
@@ -701,6 +643,7 @@ void Controller::convert_state_to_mpc_state()
     mpc_debug_msg.epsi_current = mpc_state.epsi;
     mpc_debug_msg.v_ref = ref_path.velocity_ref(best_i1);
     mpc_debug_msg.kappa_ref = ref_path.curvature(best_i0);
+    mpc_debug_msg.mpc_yaw_rate_from_curvature = ref_path.curvature(best_i0)*mpc_debug_msg.v_ref;
     if(std::abs(ref_path.curvature(best_i0))>1e-4){
     mpc_debug_msg.R_ref = 1.0/ref_path.curvature(best_i0);
     }
@@ -719,6 +662,7 @@ void Controller::convert_state_to_mpc_state()
 
     mpc_debug_msg.mpc_steer_angle = mpc_state.delta*180.0/M_PI;
     mpc_debug_msg.mpc_steer_rate = mpc_state.d_delta*180.0/M_PI;
+    mpc_debug_msg.solver_failed = solver_failed_; // do uzupełnienia po MPC
     pub_mpc_debug.publish(mpc_debug_msg);
     if(std::abs(mpc_debug_msg.R_ref )< 4.5){
         ROS_WARN_STREAM_THROTTLE(1.0,"[MPC] Small turning radius R_ref="<< mpc_debug_msg.R_ref<<" m");
