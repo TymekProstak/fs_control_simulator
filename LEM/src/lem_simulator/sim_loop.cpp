@@ -983,11 +983,11 @@ void Simulation_lem_ros_node::pub_full_state_(){
 
     kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rl ) - P_.get("kappa_slip_threshold")) * msg.step_dt ;
     kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rr ) - P_.get("kappa_slip_threshold")) * msg.step_dt ;
-    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_fr)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
-    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rl)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
-    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rr)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
-    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_fl)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
-    slip_body_metric_ += std::max(0.0, std::abs(msg.slip_angle_body)*180.0/M_PI - P_.get("slip_body_slip_threshold")) *  msg.step_dt ;
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_fr) - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rl) - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rr) - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_fl) - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
+    slip_body_metric_ += std::max(0.0, std::abs(msg.slip_angle_body) - P_.get("slip_body_slip_threshold")) *  msg.step_dt ;
 
     update_top_abs(ten_biggest_slip_ratio_, kappa_max_abs_signed, 10);
     update_top_abs(ten_biggest_beta_angle_, msg.slip_angle_body, 10);
