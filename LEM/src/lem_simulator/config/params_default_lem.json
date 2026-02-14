@@ -121,7 +121,7 @@
     "orientation_noise": 0.003,
     "rotation_noise": 0.01,
     "speed_gps_noise": 0.05,
-    "ins_frequancy": 50,
+    "ins_frequancy": 30,
 
     "gps_speed_frequancy": 10,
     "gyro_noise": 0.002,

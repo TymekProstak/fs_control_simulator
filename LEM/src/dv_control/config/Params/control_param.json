@@ -17,7 +17,7 @@
   "general":{
     "max_delta" : 0.4,
     "min_delta" : -0.4,
-    "odom_frequency": 50.0,
+    "odom_frequency": 30.0,
     "interpoleted_num_max_points": 50000,
     "distance_between_interpoleted_points": 0.1,
     "v_target" : 2.5,
@@ -73,8 +73,8 @@
    },
 
    "cost":{
-    "Q_y": 50.0,
-    "Q_psi": 300.0,
+    "Q_y": 100.0,
+    "Q_psi": 400.0,
     "Q_r" : 1.0,
     "Q_delta": 1.0,
     "R_ddelta": 600.0,
