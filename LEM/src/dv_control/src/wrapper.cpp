@@ -628,8 +628,8 @@ void Controller::convert_state_to_mpc_state()
 
   
     ey_count++;
-    ey_sum += std::abs(ey_);
-    epsi_sum += std::abs(epsi);
+    ey_sum += std::abs(ey_)*std::abs(ey_);
+    epsi_sum += std::abs(epsi)*std::abs(epsi);
     // update prev
     have_prev   = true;
     ey_prev     = ey_;
@@ -637,8 +637,8 @@ void Controller::convert_state_to_mpc_state()
     seg_i0_prev = best_i0;
     seg_i1_prev = best_i1;
     dv_interfaces::MPCDebug mpc_debug_msg;
-    mpc_debug_msg.ey_avg = ey_sum / ey_count;
-    mpc_debug_msg.epsi_avg = epsi_sum / ey_count;
+    mpc_debug_msg.ey_avg = std::sqrt(ey_sum / ey_count);
+    mpc_debug_msg.epsi_avg = std::sqrt(epsi_sum / ey_count);
     mpc_debug_msg.ey_current = mpc_state.ey;
     mpc_debug_msg.epsi_current = mpc_state.epsi;
     mpc_debug_msg.v_ref = ref_path.velocity_ref(best_i1);
