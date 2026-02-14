@@ -27,11 +27,11 @@
   },
 
   "velocity_planner":{
-    "max_accel": 8.0,
+    "max_accel": 7.0,
     "max_decel": -5.0,
     "v_min": 2.0,
     "v_max": 12.5,
-    "max_corrnering_accel": 8.0,
+    "max_corrnering_accel": 7.0,
     "saftey_factor": 0.95,
     "max jerk": 25.0,
     "spatial_step": 0.1,
@@ -73,7 +73,7 @@
    },
 
    "cost":{
-    "Q_y": 100.0,
+    "Q_y": 200.0,
     "Q_psi": 400.0,
     "Q_r" : 1.0,
     "Q_delta": 1.0,

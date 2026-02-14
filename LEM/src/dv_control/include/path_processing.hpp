@@ -742,7 +742,7 @@ static inline void forwardPass_threeCases(
     a.assign(N, 0.0);
     is_valid.assign(N, true);
 
-    v[0] = std::clamp(v0, v_min, v_max);
+    v[0] = v0;
 
     for (int i = 0; i < N - 1; ++i) {
         const double v0i = v[i];
@@ -1177,7 +1177,7 @@ inline PathProcessResult all_path_and_velocity_planner_process_for_control(
 
     // ---- v0 along ----
     double v0_along = bolide_state.vx;
-    v0_along = std::clamp(v0_along, v_min, v_max);
+    v0_along = std::max(v0_along, v_min);
 
     // ---- a0 along ----
     double a0_along = bolide_state.acc;

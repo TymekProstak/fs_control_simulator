@@ -155,10 +155,10 @@
   },
 
   "metrics": {
-    "kappa_slip_threshold": 0.12,
-    "slip_angle_slip_threshold": 7.0,
+    "kappa_slip_threshold": 0.10,
+    "slip_angle_slip_threshold": 8.0,
     "slip_body_slip_threshold": 9.0,
     "max_track_violation": 0.2,
-    "max_yaw_rate_factor_violation": 4.0
+    "max_yaw_rate_factor_violation": 2.0
   }
 }
