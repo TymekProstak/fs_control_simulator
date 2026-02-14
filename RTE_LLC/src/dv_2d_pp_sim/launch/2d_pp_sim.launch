@@ -1,5 +1,0 @@
-<launch>
-   <arg name="fake_cone_detector" default="True"/>
-   
-   <node pkg="dv_2d_pp_sim" type="dv_2d_pp_sim_node" name="TwoDim_Path_Planning_Sim" output="screen"/>
-</launch>
