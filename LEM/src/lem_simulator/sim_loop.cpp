@@ -981,8 +981,8 @@ void Simulation_lem_ros_node::pub_full_state_(){
     const double kappa_max_abs_signed =
     (std::abs(msg.kappa_rr) > std::abs(msg.kappa_rl)) ? msg.kappa_rr : msg.kappa_rl;
 
-    kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rl ) - P_.get("kappa_slip_threshold"));
-    kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rr ) - P_.get("kappa_slip_threshold"));
+    kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rl ) - P_.get("kappa_slip_threshold")) * msg.step_dt ;
+    kappa_metric_ += std::max(0.0, std::abs(msg.kappa_rr ) - P_.get("kappa_slip_threshold")) * msg.step_dt ;
     slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_fr)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
     slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rl)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
     slip_angle_metric_ += std::max(0.0, std::abs(msg.slip_angle_rr)*180.0/M_PI - P_.get("slip_angle_slip_threshold")) *  msg.step_dt ;
