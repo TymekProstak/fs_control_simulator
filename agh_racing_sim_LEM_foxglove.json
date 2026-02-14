@@ -1,0 +1,519 @@
+{
+  "configById": {
+    "3D!4fre4xk": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 12.923792216481486,
+        "phi": 54.52287888145351,
+        "thetaOffset": 67.52267617214734,
+        "targetOffset": [
+          0.9249315808263527,
+          2.899806292310331,
+          7.842761700702458e-15
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 90,
+        "near": 0.1,
+        "far": 2000,
+        "logDepth": true
+      },
+      "followMode": "follow-pose",
+      "scene": {
+        "syncCamera": false
+      },
+      "transforms": {
+        "frame:bolide_CoG": {
+          "visible": false
+        },
+        "frame:camera_base": {
+          "visible": false
+        },
+        "frame:": {
+          "visible": false
+        },
+        "frame:base_link": {
+          "visible": false
+        },
+        "frame:gps": {
+          "visible": false
+        },
+        "frame:os_sensor": {
+          "visible": false
+        },
+        "frame:bolide_true": {
+          "visible": true
+        },
+        "frame:map": {
+          "visible": false
+        }
+      },
+      "topics": {
+        "/viz/cones_gt": {
+          "visible": true,
+          "showOutlines": true
+        },
+        "/viz/cones_vis": {
+          "visible": true
+        },
+        "/viz/bolide_model": {
+          "visible": true
+        },
+        "/slam/cones": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo"
+        },
+        "/slam/markers": {
+          "visible": true
+        },
+        "/path_planning/markers": {
+          "visible": true
+        },
+        "/path_planning/path": {
+          "visible": false
+        },
+        "/move_base_simple/goal": {
+          "visible": true
+        },
+        "/control/markers": {
+          "visible": true
+        },
+        "/control/ref_path": {
+          "visible": true
+        },
+        "/initialpose": {
+          "visible": true
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "frameLocked": true,
+          "label": "Grid",
+          "instanceId": "f7c01b66-33a9-4a2e-82bb-5087b0993162",
+          "layerId": "foxglove.Grid",
+          "size": 10,
+          "divisions": 10,
+          "lineWidth": 1,
+          "color": "#248eff",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "imageMode": {},
+      "followTf": "bolide_true"
+    },
+    "3D!13xy8ma": {
+      "cameraState": {
+        "perspective": false,
+        "distance": 13.966745921874919,
+        "phi": 64.16711497923151,
+        "thetaOffset": 0,
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 90,
+        "near": 0,
+        "far": 9,
+        "logDepth": false
+      },
+      "followMode": "follow-none",
+      "scene": {
+        "syncCamera": false,
+        "enableStats": false
+      },
+      "transforms": {
+        "frame:bolide_CoG": {
+          "visible": false
+        },
+        "frame:camera_base": {
+          "visible": false
+        },
+        "frame:": {
+          "visible": false
+        },
+        "frame:base_link": {
+          "visible": false
+        },
+        "frame:gps": {
+          "visible": false
+        },
+        "frame:os_sensor": {
+          "visible": false
+        },
+        "frame:bolide_true": {
+          "visible": true
+        },
+        "frame:map": {
+          "visible": false
+        }
+      },
+      "topics": {
+        "/viz/cones_gt": {
+          "visible": true,
+          "showOutlines": true
+        },
+        "/viz/cones_vis": {
+          "visible": true
+        },
+        "/viz/bolide_model": {
+          "visible": true
+        },
+        "/slam/cones": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo"
+        },
+        "/slam/markers": {
+          "visible": true
+        },
+        "/path_planning/markers": {
+          "visible": true
+        },
+        "/path_planning/path": {
+          "visible": false
+        },
+        "/move_base_simple/goal": {
+          "visible": true
+        },
+        "/control/markers": {
+          "visible": true
+        },
+        "/control/ref_path": {
+          "visible": true
+        },
+        "/initialpose": {
+          "visible": true
+        },
+        "/control/gg_limit_marker": {
+          "visible": true
+        },
+        "/simulation/gg_sphere": {
+          "visible": true
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": false,
+          "frameLocked": true,
+          "label": "Grid",
+          "instanceId": "f7c01b66-33a9-4a2e-82bb-5087b0993162",
+          "layerId": "foxglove.Grid",
+          "size": 10,
+          "divisions": 10,
+          "lineWidth": 1,
+          "color": "#248eff",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "imageMode": {},
+      "followTf": "gg_dashboard",
+      "foxglovePanelTitle": "gg plot"
+    },
+    "Plot!2jars2f": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.alat_ref",
+          "enabled": true,
+          "color": "#4e98e2"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.ay",
+          "enabled": true,
+          "color": "#f5774d"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "correring acceleration"
+    },
+    "Plot!i5zpx5": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.slip_angle_body",
+          "enabled": false,
+          "color": "#4e98e2"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.slip_angle_fl",
+          "enabled": true,
+          "color": "#f5774d"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.slip_angle_fr",
+          "enabled": true,
+          "color": "#f7df71"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.slip_angle_rl",
+          "enabled": true,
+          "color": "#5cd6a9"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.slip_angle_rr",
+          "enabled": true,
+          "color": "#61cbff"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "slip angels of tires and body"
+    },
+    "Plot!tk6sww": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.ax",
+          "enabled": true,
+          "color": "#4e98e2"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.ax_target",
+          "enabled": true,
+          "color": "#f5774d"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "longitudal acceleration"
+    },
+    "Plot!230getr": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.next_yaw_rate_target",
+          "enabled": true,
+          "color": "#4e98e2"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.yaw_rate",
+          "enabled": true,
+          "color": "#cf4cf5"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.mpc_yaw_rate_from_curvature",
+          "enabled": true,
+          "color": "#72f774"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "yaw rate vs target"
+    },
+    "Plot!1lk9e68": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.v_ref",
+          "enabled": true,
+          "color": "#4e98e2"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.vx",
+          "enabled": true,
+          "color": "#f5774d"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "velocity vs target"
+    },
+    "Plot!2yd7eh0": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.kappa_rr",
+          "enabled": true,
+          "color": "#f7df71"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/debug/full_log_info.kappa_rl",
+          "enabled": true,
+          "color": "#5cd6a9"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": false,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "slip ratios"
+    },
+    "Plot!31zufwj": {
+      "paths": [
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.ey_avg",
+          "enabled": true,
+          "color": "#4e98e2"
+        },
+        {
+          "timestampMethod": "receiveTime",
+          "value": "/control/mpc_debug.ey_current",
+          "enabled": true,
+          "color": "#f5774d"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": false,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "foxglovePanelTitle": "lateral error"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "first": {
+      "first": {
+        "first": {
+          "first": "3D!4fre4xk",
+          "second": "3D!13xy8ma",
+          "direction": "column",
+          "splitPercentage": 68.80616174582799
+        },
+        "second": "Plot!2jars2f",
+        "direction": "column",
+        "splitPercentage": 73.88724035608308
+      },
+      "second": {
+        "first": "Plot!i5zpx5",
+        "second": {
+          "first": "Plot!tk6sww",
+          "second": "Plot!230getr",
+          "direction": "column",
+          "splitPercentage": 52.80235988200591
+        },
+        "direction": "column",
+        "splitPercentage": 30.85332184293261
+      },
+      "direction": "row",
+      "splitPercentage": 52.63252600136755
+    },
+    "second": {
+      "first": "Plot!1lk9e68",
+      "second": {
+        "first": "Plot!2yd7eh0",
+        "second": "Plot!31zufwj",
+        "direction": "column",
+        "splitPercentage": 40.693947976866056
+      },
+      "direction": "column",
+      "splitPercentage": 36.795252225519285
+    },
+    "direction": "row",
+    "splitPercentage": 66.85499058380414
+  }
+}
