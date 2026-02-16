@@ -1074,114 +1074,6 @@ void Simulation_lem_ros_node::publish_bolid_marker_()
 
 
 
-void Simulation_lem_ros_node::log_metric_of_ride_data_()
-{
-    // Jeśli nie ma ścieżki, to nic nie zapisuję
-    if (metrics_log_file_path_.empty()) return;
-
-    std::ofstream f(metrics_log_file_path_, std::ios::out);
-    if (!f.is_open())
-    {
-        ROS_WARN_STREAM("[METRICS] Cannot open metrics file: " << metrics_log_file_path_);
-        return;
-    }
-
-    const double dt = P_.get("simulation_time_step");
-    const double total_time = static_cast<double>(step_number_) * dt;
-
-    // policz procent czasu TC aktywne dopiero na końcu
-    if (total_time > 1e-9)
-        percetage_of_time_tc_active_ = 100.0 * time_tc_active_ / total_time;
-    else
-        percetage_of_time_tc_active_ = 0.0;
-
-    if (total_time > 1e-9)
-        percetage_of_time_beta_over_9_ = 100.0 * time_beta_over_9_ / total_time;
-    else
-        percetage_of_time_beta_over_9_ = 0.0;
-
-    // helper do wektorów -> "a;b;c;d"
-    auto join_vec = [](const std::vector<double>& v) -> std::string
-    {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(6);
-        for (size_t i = 0; i < v.size(); ++i)
-        {
-            if (i) oss << ";";
-            oss << v[i];
-        }
-        return oss.str();
-    };
-
-    // CSV-safe string: " -> "" i całe pole w cudzysłów
-    auto csv_quote = [](const std::string& s) -> std::string
-    {
-        std::string out;
-        out.reserve(s.size() + 2);
-        out.push_back('"');
-        for (char c : s) {
-            if (c == '"') out += "\"\"";
-            else out.push_back(c);
-        }
-        out.push_back('"');
-        return out;
-    };
-
-    // CSV: proste "metric,value"
-    f << "metric,value\n";
-
-    // ==========================================================
-    // CRASH INFO (NEW)
-    // ==========================================================
-    // Jeśli nie było crasha -> wpisz sensowne defaulty, żeby parser zawsze miał te pola
-    f << "crashed," << (crashed_ ? 1 : 0) << "\n";
-
-    if (crashed_) {
-        f << "crash_reason,"  << csv_quote(crash_reason_) << "\n";
-        f << "crash_step,"    << crash_step_ << "\n";
-        f << "crash_time_s,"  << crash_time_s_ << "\n";
-    } else {
-        f << "crash_reason,"  << csv_quote("") << "\n";
-        f << "crash_step,"    << -1 << "\n";
-        f << "crash_time_s,"  << -1.0 << "\n";
-    }
-
-    // ==========================================================
-    // NORMAL METRICS
-    // ==========================================================
-    f << "total_time_s," << total_time << "\n";
-    f << "ey_avg_m,"      << ey_avg_   << "\n";
-    f << "epsi_avg_rad,"  << epsi_avg_ << "\n";
-    f << "vs_avg_mps,"    << vs_avg_   << "\n";
-
-    f << "time_tc_active_s," << time_tc_active_ << "\n";
-    f << "tc_active_percent," << percetage_of_time_tc_active_ << "\n";
-    f << "time_beta_over_9deg_s," << time_beta_over_9_ << "\n";
-    f << "beta_over_9deg_percent," << percetage_of_time_beta_over_9_ << "\n";
-
-    // Top 10 listy jako jedna komórka
-    f << "ten_biggest_slip_ratio," << "\"" << join_vec(ten_biggest_slip_ratio_) << "\"\n";
-    f << "ten_biggest_beta_angle," << "\"" << join_vec(ten_biggest_beta_angle_) << "\"\n";
-    f << "ten_biggest_ey,"         << "\"" << join_vec(ten_biggest_ey_) << "\"\n";
-    f << "ten_biggest_epsi,"       << "\"" << join_vec(ten_biggest_epsi_) << "\"\n";
-
-    // Uwaga: dzielenie przez total_time -> zabezpiecz
-    if (total_time > 1e-9) {
-        f << "kappa_metric,"       << (kappa_metric_ / total_time) << "\n";
-        f << "slip_angle_metric,"  << (slip_angle_metric_ / total_time) << "\n";
-        f << "slip_body_metric,"   << (slip_body_metric_ / total_time) << "\n";
-    } else {
-        f << "kappa_metric,"       << 0.0 << "\n";
-        f << "slip_angle_metric,"  << 0.0 << "\n";
-        f << "slip_body_metric,"   << 0.0 << "\n";
-    }
-
-    f.flush();
-    f.close();
-
-    ROS_WARN_STREAM("[METRICS] Saved ride metrics to: " << metrics_log_file_path_);
-}
-
 void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug::ConstPtr& msg)
 {
     // ----- Twoje metryki jak wcześniej -----
@@ -1211,7 +1103,7 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
 
     const double factor = P_.get("max_yaw_rate_factor_violation"); // np. 2.5
     const double eps = 1e-6;
-    if (std::abs(yr_mpc) > factor * (std::abs(yr_curv) + eps) && yr_mpc > 1.5 )
+    if (std::abs(yr_mpc) > factor * (std::abs(yr_curv) + eps) && yr_curv > 0.75 )
     {
         std::ostringstream oss;
         oss << "yaw_rate_violation: |yr_mpc|=" << std::abs(yr_mpc)
@@ -1224,6 +1116,8 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
     //    Warunek: auto (prostokąt przybliżony) musi mieścić się w "max_track_violation"
     const double ey   = msg->ey_current;
     const double epsi = msg->epsi_current;
+    const double ey_avg = msg->ey_avg;
+    const double vs_avg = msg->v_s_avg;
 
     const double L = P_.get("car_length");   // dodaj w paramach jeśli nie masz
     const double W = P_.get("car_width");    // dodaj w paramach jeśli nie masz
@@ -1248,7 +1142,31 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
         mark_crash_(oss.str());
         return;
     }
+
+    const double t = step_number_ * P_.get("simulation_time_step");
+
+    // 4) ey_avg crash (po 10s, żeby nie karać startu)
+    if (ey_avg > P_.get("ey_avg_crash_threshold") && t > 10.0)
+    {
+        std::ostringstream oss;
+        oss << "ey_avg_violation: ey_avg=" << ey_avg
+            << " > thr=" << P_.get("ey_avg_crash_threshold")
+            << " | ey_current=" << ey
+            << " | t=" << t;
+        mark_crash_(oss.str());
+        return;
+    }
+
+    // 5) vs_avg crash (podpis poprawny, logujemy vs_avg)
+    if (vs_avg < P_.get("vs_avg_crash_threshold") && t > 10.0)
+    {
+        std::ostringstream oss;
+        oss << "vs_avg_violation: vs_avg=" << vs_avg
+            << " > thr=" << P_.get("vs_avg_crash_threshold")
+            << " | t=" << t;
+        mark_crash_(oss.str());
+        return;
+    }
 }
-} // namespace lem_dynamics_sim
 
 
