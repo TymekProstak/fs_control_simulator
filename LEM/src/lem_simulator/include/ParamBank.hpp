@@ -271,6 +271,8 @@ inline ParamBank build_param_bank(const nlohmann::json& J){
   P.add("slip_body_slip_threshold", JgetReqSafe(J,"metrics.slip_body_slip_threshold"));
   P.add("max_track_violation", JgetReqSafe(J,"metrics.max_track_violation"));
   P.add("max_yaw_rate_factor_violation", JgetReqSafe(J,"metrics.max_yaw_rate_factor_violation"));
+  P.add("ey_avg_crash_threshold", JgetReqSafe(J,"metrics.ey_avg_crash_threshold"));
+  P.add("vs_avg_crash_threshold", JgetReqSafe(J,"metrics.vs_avg_crash_threshold"));
 
 
   return P;

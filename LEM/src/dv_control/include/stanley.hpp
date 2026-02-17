@@ -30,6 +30,7 @@ class Stanley{
   inline double get_angle_error() const {return angle_error;}
   inline double get_cross_track_error() const { return cross_track_error;}
   geo_control_return StanleyControl(const State &bolid_state) ;
+  geo_control_return StanleyControl(const State &bolid_state, double ey, double path_yaw) ;
 
 
   private:

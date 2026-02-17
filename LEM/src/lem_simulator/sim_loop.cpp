@@ -1211,7 +1211,7 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
 
     const double factor = P_.get("max_yaw_rate_factor_violation"); // np. 2.5
     const double eps = 1e-6;
-    if (std::abs(yr_mpc) > factor * (std::abs(yr_curv) + eps) && yr_mpc > 1.5 )
+    if (std::abs(yr_mpc) > factor * (std::abs(yr_curv) + eps) && yr_curv > 1.25 )
     {
         std::ostringstream oss;
         oss << "yaw_rate_violation: |yr_mpc|=" << std::abs(yr_mpc)
@@ -1224,6 +1224,8 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
     //    Warunek: auto (prostokąt przybliżony) musi mieścić się w "max_track_violation"
     const double ey   = msg->ey_current;
     const double epsi = msg->epsi_current;
+    const double ey_avg = msg->ey_avg;
+    const double vs_avg = msg->v_s_avg;
 
     const double L = P_.get("car_length");   // dodaj w paramach jeśli nie masz
     const double W = P_.get("car_width");    // dodaj w paramach jeśli nie masz
@@ -1245,6 +1247,31 @@ void Simulation_lem_ros_node::mpc_debug_callback_(const dv_interfaces::MPCDebug:
             << " margin=" << track_margin
             << " left_ok=" << left_ok
             << " right_ok=" << right_ok;
+        mark_crash_(oss.str());
+        return;
+    }
+
+    const double t = step_number_ * P_.get("simulation_time_step");
+
+    // 4) ey_avg crash (po 10s, żeby nie karać startu)
+    if (ey_avg > P_.get("ey_avg_crash_threshold") && t > 10.0)
+    {
+        std::ostringstream oss;
+        oss << "ey_avg_violation: ey_avg=" << ey_avg
+            << " > thr=" << P_.get("ey_avg_crash_threshold")
+            << " | ey_current=" << ey
+            << " | t=" << t;
+        mark_crash_(oss.str());
+        return;
+    }
+
+    // 5) vs_avg crash (podpis poprawny, logujemy vs_avg)
+    if (vs_avg < P_.get("vs_avg_crash_threshold") && t > 10.0)
+    {
+        std::ostringstream oss;
+        oss << "vs_avg_violation: vs_avg=" << vs_avg
+            << " > thr=" << P_.get("vs_avg_crash_threshold")
+            << " | t=" << t;
         mark_crash_(oss.str());
         return;
     }

@@ -256,6 +256,7 @@ void Controller::geometricControl()
 
     if (static_cast<int>(param_.get("using_stanley")))
     {
+        //control_output = stanley.StanleyControl(current_state,ey_,path_yaw_);
         control_output = stanley.StanleyControl(current_state);
     }
     else {

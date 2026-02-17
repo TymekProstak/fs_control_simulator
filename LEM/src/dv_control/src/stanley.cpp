@@ -123,4 +123,20 @@ geo_control_return Stanley::StanleyControl(const State &bolid_state)
     
     return control_output;
 }
+
+geo_control_return Stanley::StanleyControl(const State &bolid_state, double ey, double path_yaw) 
+{   
+    // używamy ey i path_yaw z argumentów zamiast z przeszukania, ale nadal aktualizujemy lookAheadPointInGlobalFrame na podstawie bolid_state i ptrack_ (jeśli jest wystarczająco dużo punktów
+    cross_track_error = ey;
+    this->path_yaw = path_yaw;
+    angle_error =  bolid_state.yaw - path_yaw;
+    unwrap_angle(angle_error);
+    double steering_angle = computeSteeringAngle(bolid_state);
+    geo_control_return control_output;
+    findLookAheadPoint(bolid_state); // Aktualizujemy lookAheadPointInGlobalFrame, ale możemy go potem nadpisać
+    control_output.look_ahead_point = lookAheadPointInGlobalFrame; // Możesz też ustawić to na jakiś inny punkt, jeśli chcesz
+    control_output.steering_angle = steering_angle;
+    
+    return control_output;
+}
 }
