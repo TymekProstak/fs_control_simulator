@@ -1,0 +1,25 @@
+{
+  "best_safe_cost": Infinity,
+  "best_safe_theta": null,
+  "best_safe_u": null,
+  "best_any_cost": 68.0,
+  "best_any_theta": {
+    "velocity_planner.v_max": 15.118065778254962,
+    "velocity_planner.max_corrnering_accel": 13.89083042904697,
+    "velocity_planner.max_accel": 18.342854572753666,
+    "velocity_planner.max_decel": -18.46402062045266,
+    "velocity_planner.max_devel": -18.46402062045266,
+    "mpc.cost.Q_y": 1098.58316610042,
+    "mpc.cost.Q_psi": 835.2070271249383,
+    "mpc.cost.R_ddelta": 1106.619925179338
+  },
+  "best_any_u": [
+    0.5931721481879135,
+    0.6181769018154356,
+    0.8964284107971041,
+    0.09599871122170872,
+    0.9574135917063171,
+    0.9199339380872864,
+    0.8056846547111997
+  ]
+}

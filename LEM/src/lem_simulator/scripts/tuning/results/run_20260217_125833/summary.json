@@ -1,0 +1,7 @@
+{
+  "best_cost": Infinity,
+  "best_theta": null,
+  "best_u": null,
+  "n_evals": 72,
+  "out_dir": "/home/mkursa/projekty/fs_control_simulator/LEM/src/lem_simulator/scripts/tuning/results/run_20260217_125833"
+}

@@ -1,0 +1,8 @@
+{
+  "best_safe_cost": Infinity,
+  "best_safe_theta": null,
+  "best_safe_u": null,
+  "best_any_cost": Infinity,
+  "best_any_theta": null,
+  "best_any_u": null
+}

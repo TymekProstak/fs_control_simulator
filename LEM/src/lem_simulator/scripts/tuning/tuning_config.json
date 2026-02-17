@@ -1,0 +1,111 @@
+{
+  "paths": {
+    "workspace_root": "~/projekty/fs_control_simulator/LEM/src",
+
+    "sim_launch_rel": "lem_simulator/launch/sim.launch",
+    "ctrl_launch_rel": "dv_control/launch/control.launch",
+
+    "control_param_json_rel": "dv_control/config/Params/control_param.json",
+    "lem_params_json_rel": "lem_simulator/config/params_default_lem.json",
+
+    "metrics_csv_rel": "lem_simulator/logs/run_default_metrics.csv",
+
+    "acados_lib": "~/fs_control_simulator/LEM/src/dv_control/External/acados/install/lib"
+  },
+
+  "ros": {
+    "ros_master_host": "127.0.0.1",
+    "ros_master_port": 11311,
+    "start_roscore_if_needed": true
+  },
+
+  "sim": {
+    "default_sim_time_s": 120,
+    "ins_mode": "kalman",
+    "low_level_controlers": "false",
+    "episode_hard_timeout_margin_s": 30.0,
+    "metrics_wait_timeout_s": 10.0
+  },
+
+  "tracks": {
+    "track_index_min": 1,
+    "track_index_max": 50
+  },
+
+  "objective": {
+    "speed_key_candidates": ["vs_avg_mps", "vs_avg_mpc"],
+
+    "weights": {
+      "vs_avg_mps": -1.0,
+      "ey_avg_m": 30.0,
+      "kappa_metric": 175.0,
+      "slip_angle_metric": 175.0
+    },
+
+    "crash_penalty": 30.0,
+    "crash_time_penalty": 0.15
+  },
+
+  "params": {
+    "velocity_planner.v_max":                 { "lo": 8.0,   "hi": 20.0,   "init": 12.5, "scale": "linear" },
+    "velocity_planner.max_corrnering_accel": { "lo": 4.0,   "hi": 20.0,   "init": 7.0,  "scale": "linear" },
+    "velocity_planner.max_accel":            { "lo": 4.0,   "hi": 20.0,   "init": 9.8,  "scale": "linear" },
+
+    "velocity_planner.max_decel":            { "lo": -20.0, "hi": -4.0,   "init": -8.0, "scale": "linear",
+                                               "aliases": ["velocity_planner.max_devel"] },
+
+    "mpc.cost.Q_y":                          { "lo": 1.0,   "hi": 1500.0, "init": 50.0,  "scale": "log" },
+    "mpc.cost.Q_psi":                        { "lo": 1.0,   "hi": 1500.0, "init": 200.0, "scale": "log" },
+    "mpc.cost.R_ddelta":                     { "lo": 1.0,   "hi": 6000.0, "init": 600.0, "scale": "log" }
+  },
+
+  "lem_params_overrides": {
+    "enabled": true,
+    "apply_each_episode": false,
+    "values": {
+      "metrics.kappa_slip_threshold": 0.30,
+      "metrics.slip_body_slip_threshold": 0.35,
+      "metrics.slip_angle_slip_threshold": 0.30,
+      "metrics.max_track_violation": 4.5
+    }
+  },
+
+  
+  
+  "eval": {
+    "tracks_per_theta": 1,
+    "repeats_per_track": 5,
+    "aggregation": "median",
+
+    "crash_rate_as_crash": 0.2,
+    "crash_risk_weight": 20.0
+  },
+
+
+  "gp": {
+    "kernel": "matern52",
+    "noise": 1e-4,
+    "hyperparam_random_restarts": 12
+  },
+
+  "bo": {
+    "seed": 7,
+
+    "n_init": 12,
+    "n_iter": 60,
+
+    "acq": "lcb",
+    "kappa_start": 3.0,
+    "kappa_end": 0.7,
+
+    "random_prob": 0.15,
+    "acq_num_random_samples": 2500,
+    "acq_local_refine_steps": 180,
+
+    "vdp_enabled": true,
+    "vdp_beta": 3.0,
+    "vdp_clip_to_success_range": true,
+
+    "save_best_control_json_name": "control_param_best_from_bayes.json"
+  }
+}
