@@ -273,9 +273,32 @@ class GaussianProcess:
         mu = sum(kvec[i] * self.alpha[i] for i in range(n))
 
         v = chol_solve(self.L, kvec)
-        kxx = self.kernel(x, x) + self.noise
+        kxx = self.kernel(x, x)
         var = max(1e-12, kxx - sum(kvec[i] * v[i] for i in range(n)))
         return mu, var
+    
+    def log_marginal_likelihood(self) -> float:
+        """
+        Log marginal likelihood: log p(y | X, hyperparams)
+        LML = -0.5 * y^T K^{-1} y - 0.5 * log|K| - n/2 * log(2*pi)
+        Uwaga: alpha = K^{-1} y (masz już policzone w fit).
+        log|K| liczymy z Cholesky: log|K| = 2 * sum(log(diag(L))).
+        """
+        if self.L is None or self.alpha is None or len(self.y) == 0:
+            return float("-inf")
+        n = len(self.y)
+        # y^T K^{-1} y = y^T alpha
+        yt_alpha = 0.0
+        for i in range(n):
+            yt_alpha += float(self.y[i]) * float(self.alpha[i])
+        # log|K| via Cholesky
+        logdet = 0.0
+        for i in range(n):
+            lii = max(1e-300, float(self.L[i][i]))
+            logdet += 2.0 * math.log(lii)
+        return -0.5 * yt_alpha - 0.5 * logdet - 0.5 * n * math.log(2.0 * math.pi)
+    
+    
 
 
 # -------------------------
@@ -671,30 +694,30 @@ def main() -> int:
         else:
             X_fit, y_fit = X_succ, y_succ
 
-        # fit GP with random-restart hyperparams
+        # fit GP with random-restart hyperparams (select by max log marginal likelihood)
         best_fit_gp = None
-        best_fit_score = float("inf")
+        best_fit_lml = float("-inf")
 
-        for _ in range(int(gp_cfg.get("hyperparam_random_restarts", 8))):
+        n_restarts = int(gp_cfg.get("hyperparam_random_restarts", 8))
+        for _ in range(n_restarts):
             gp = GaussianProcess(gp_cfg.get("kernel", "matern52"), float(gp_cfg.get("noise", 1e-4)), d)
 
+            # log-uniform restart for length-scales
             ell = [10 ** random.uniform(math.log10(0.08), math.log10(0.7)) for _ in range(d)]
+
+            # amplitude init from empirical variance (reasonable default)
             sigma_f = max(1e-6, math.sqrt(max(1e-12, _var(y_fit))))
+
             gp.set_hyperparams(ell, sigma_f)
 
             ok = gp.fit(X_fit, y_fit)
             if not ok:
                 continue
 
-            # crude fit score: avg predictive variance on training points (smaller -> more confident)
-            score = 0.0
-            for xi in X_fit:
-                _, var = gp.predict(xi)
-                score += var
-            score /= max(1, len(X_fit))
+            lml = gp.log_marginal_likelihood()
 
-            if score < best_fit_score:
-                best_fit_score = score
+            if lml > best_fit_lml:
+                best_fit_lml = lml
                 best_fit_gp = gp
 
         if best_fit_gp is None:

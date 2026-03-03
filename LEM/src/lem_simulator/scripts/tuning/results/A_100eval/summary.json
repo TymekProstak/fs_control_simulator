@@ -1,0 +1,44 @@
+{
+  "best_safe_cost": 139.27725,
+  "best_safe_theta": {
+    "velocity_planner.v_max": 8.721623049745395,
+    "velocity_planner.max_corrnering_accel": 10.293147140698666,
+    "velocity_planner.max_accel": 18.37067850971636,
+    "velocity_planner.max_decel": -5.862661801075941,
+    "velocity_planner.max_devel": -5.862661801075941,
+    "mpc.cost.Q_y": 212.42104853500118,
+    "mpc.cost.Q_psi": 1473.145675666798,
+    "mpc.cost.R_ddelta": 3309.0908891603644
+  },
+  "best_safe_u": [
+    0.06013525414544951,
+    0.39332169629366664,
+    0.8981674068572725,
+    0.8835836374327537,
+    0.7327237659186538,
+    0.9975298052978604,
+    0.931595498067392
+  ],
+  "best_any_cost": 31.673999999999996,
+  "best_any_theta": {
+    "velocity_planner.v_max": 8.210053469799954,
+    "velocity_planner.max_corrnering_accel": 11.343533167417554,
+    "velocity_planner.max_accel": 17.11836308319789,
+    "velocity_planner.max_decel": -4.510267973588807,
+    "velocity_planner.max_devel": -4.510267973588807,
+    "mpc.cost.Q_y": 26.760689319446865,
+    "mpc.cost.Q_psi": 7.133126274340881,
+    "mpc.cost.R_ddelta": 6.205785424918654
+  },
+  "best_any_u": [
+    0.017504455816662823,
+    0.45897082296359715,
+    0.8198976926998682,
+    0.9681082516506996,
+    0.4494509696510952,
+    0.26865724017358084,
+    0.20983721998747262
+  ],
+  "n_evals": 100,
+  "out_dir": "/home/mkursa/projekty/fs_control_simulator/LEM/src/lem_simulator/scripts/tuning/results/A_100eval"
+}

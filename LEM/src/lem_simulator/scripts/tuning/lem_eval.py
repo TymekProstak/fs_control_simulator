@@ -208,6 +208,24 @@ def pick_speed_key(metrics: Dict[str, Any], candidates: List[str]) -> Optional[s
             return k
     return None
 
+# ===== Metric clipping (jak u kolegi) =====
+# Clipujemy METRYKI (nie parametry), żeby outliery nie dominowały kosztu.
+METRIC_CLIPS = {
+    "vs_avg_mps": (0.0, 40.0),
+    "ey_avg_m": (0.0, 3.0),
+    "kappa_metric": (0.0, 5.0),
+    "slip_angle_metric": (0.0, 1.2),
+}
+
+def _clip_metric(name: str, x: float) -> float:
+    if name in METRIC_CLIPS:
+        lo, hi = METRIC_CLIPS[name]
+        if x < lo:
+            return float(lo)
+        if x > hi:
+            return float(hi)
+    return float(x)
+
 def compute_cost(
     metrics: Dict[str, Any],
     *,
@@ -250,6 +268,10 @@ def compute_cost(
             val = float(metrics.get(kk, 0.0))
         except Exception:
             val = 0.0
+
+        # clip po NAZWIE metryki z wag (k), jak u kolegi
+        val = _clip_metric(k, val)
+
         J += float(w) * val
 
     return float(J)

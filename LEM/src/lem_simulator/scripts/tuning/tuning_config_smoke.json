@@ -20,7 +20,7 @@
   },
 
   "sim": {
-    "default_sim_time_s": 120,
+    "default_sim_time_s": 60,
     "ins_mode": "kalman",
     "low_level_controlers": "false",
     "episode_hard_timeout_margin_s": 30.0,
@@ -31,6 +31,13 @@
     "track_index_min": 1,
     "track_index_max": 50
   },
+
+  "track_policy": {
+  "mode": "fixed_list",
+  "fixed_list": [1, 2, 3],
+  "random_no_replacement": false,
+  "single_track_id": 1
+ },
 
   "objective": {
     "speed_key_candidates": ["vs_avg_mps", "vs_avg_mpc"],
@@ -73,12 +80,12 @@
   
   
   "eval": {
-    "tracks_per_theta": 1,
-    "repeats_per_track": 5,
-    "aggregation": "median",
+    "tracks_per_theta": 3,
+    "repeats_per_track": 1,
+    "aggregation": "mean",
 
-    "crash_rate_as_crash": 0.2,
-    "crash_risk_weight": 20.0
+    "crash_rate_as_crash": 0.0,
+    "crash_risk_weight": 0.0
   },
 
 
@@ -91,16 +98,16 @@
   "bo": {
     "seed": 7,
 
-    "n_init": 12,
-    "n_iter": 60,
+    "n_init": 10,
+    "n_iter": 20,
 
     "acq": "lcb",
     "kappa_start": 3.0,
     "kappa_end": 0.7,
 
     "random_prob": 0.15,
-    "acq_num_random_samples": 2500,
-    "acq_local_refine_steps": 180,
+    "acq_num_random_samples": 800,
+    "acq_local_refine_steps": 80,
 
     "vdp_enabled": true,
     "vdp_beta": 3.0,
