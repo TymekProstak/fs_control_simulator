@@ -1,0 +1,233 @@
+{
+  "kalman_filter_kinematic": {
+    "vehicle": {
+      "lf": 0.73,
+      "lr": 0.80,
+      "mass": 193.0,
+      "wheel_radius": 0.195,
+      "wheelbase": 1.53
+    },
+    "logic": {
+      "enable_gravity_compensation": true,
+      "enable_debug_pose_integration": true
+    },
+    "process_noise": {
+      "vx": 0.10,
+      "vy": 0.15,
+      "r": 0.005,
+      "ax": 0.30,
+      "ay": 0.30
+    },
+    "initial_covariance": {
+      "vx": 0.20,
+      "vy": 0.15,
+      "r": 0.005,
+      "ax": 0.02,
+      "ay": 0.02
+    },
+    "measurement_noise": {
+      "imu_ax": 0.010,
+      "imu_ay": 0.010,
+      "imu_yaw_rate": 0.000025,
+      "wheel_speed_vx": 0.004
+    },
+    "pseudo_measurement_noise": {
+      "kinematic_r": 0.010,
+      "kinematic_ay": 0.050,
+      "kinematic_vy": 0.060,
+      "torque_ax": 0.080,
+      "zero_vy_standstill": 0.0001
+    },
+    "torque_model": {
+      "ax_gain": 0.02657,
+      "ax_bias": 0.0
+    },
+    "gravity": {
+      "max_init_wheel_speed": 0.2,
+      "max_init_yaw_rate": 0.05,
+      "min_init_time": 1.0
+    },
+    "steer_dot_filter": {
+      "cutoff_hz": 6.5,
+      "order": 2
+    },
+    "numeric": {
+      "min_vx_for_kinematic_model": 0.5,
+      "max_abs_steer_for_linear_region": 0.4,
+      "standstill_vx_threshold": 0.3,
+      "standstill_abs_steer_threshold": 0.02,
+      "standstill_abs_r_threshold": 0.05,
+      "standstill_abs_torque_threshold": 1.0
+    }
+  },
+
+
+
+
+  "complementary_filter_kinematic": {
+    "logic": {
+      "enable_gravity_compensation": true,
+      "enable_debug_pose_integration": true,
+      "enable_ins_fusion": true,
+      "enable_r_kinematic_correction": true,
+      "enable_soft_standstill_mode": true,
+      "enable_soft_straight_line_mode": true
+    },
+
+    "preprocessing": {
+      "imu_ax": {
+        "history_size_samples": 7,
+        "relative_deviation_threshold": 2.5,
+        "relative_deviation_ref_epsilon": 0.20,
+        "absolute_reject_threshold": 12.0,
+        "max_consecutive_rejects": 2
+      },
+      "imu_ay": {
+        "history_size_samples": 7,
+        "relative_deviation_threshold": 2.5,
+        "relative_deviation_ref_epsilon": 0.20,
+        "absolute_reject_threshold": 15.0,
+        "max_consecutive_rejects": 2
+      },
+      "imu_yaw_rate": {
+        "history_size_samples": 7,
+        "relative_deviation_threshold": 2.5,
+        "relative_deviation_ref_epsilon": 0.05,
+        "absolute_reject_threshold": 4.0,
+        "max_consecutive_rejects": 2
+      }
+    },
+
+    "heuristic_windows": {
+      "ax_time": 0.15,
+      "ay_time": 0.15,
+      "torque_cmd_time": 0.15,
+      "steer_dot_time": 0.15,
+      "r_kin_gyro_discrepancy_time": 0.15
+    },
+
+    "mode_detection_windows": {
+      "standstill_time": 0.3,
+      "straight_line_driving_time": 0.3
+    },
+
+    "vehicle": {
+      "lf": 0.73,
+      "lr": 0.80,
+      "mass": 193.0,
+      "wheel_radius": 0.195,
+      "wheelbase": 1.53
+    },
+
+    "sensor_freq": {
+      "imu_freq": 200.0,
+      "wheel_speed_freq": 40.0,
+      "torque_cmd_freq": 30.0,
+      "ins_freq": 30.0,
+      "steer_freq": 50.0
+    },
+
+    "torque_model": {
+      "ax_gain": 0.02657,
+      "ax_bias": 0.0
+    },
+
+    "gravity": {
+      "max_init_wheel_speed": 0.2,
+      "max_init_yaw_rate": 0.05,
+      "min_init_time": 1.0
+    },
+
+    "steer_dot_filter": {
+      "cutoff_hz": 6.5,
+      "order": 1
+    },
+
+    "r_update": {
+      "gyro_weight_min": 0.85,
+      "gyro_weight_max": 1.00,
+      "kinematic_weight_min": 0.00,
+      "kinematic_weight_max": 0.10,
+
+      "min_vx_for_kinematic_correction": 0.75,
+      "min_abs_steer_for_kinematic_correction": 0.02,
+
+      "steer_dot_soft_threshold": 0.10,
+      "steer_dot_hard_threshold": 0.80,
+
+      "ay_soft_threshold": 1.00,
+      "ay_hard_threshold": 8.00,
+
+      "discrepancy_soft_threshold": 0.08,
+      "discrepancy_hard_threshold": 0.35
+    },
+
+    "vx_update": {
+      "wheel_weight_min": 0.01,
+      "wheel_weight_max": 0.3,
+
+      "ax_activity_soft_threshold": 0.5,
+      "ax_activity_hard_threshold": 5.00,
+
+      "torque_cmd_soft_threshold": 5.0,
+      "torque_cmd_hard_threshold": 200.0,
+
+      "min_vx_for_wheel_update": 0.15
+    },
+
+    "vy_update": {
+      "kinematic_weight_min": 0.05,
+      "kinematic_weight_max": 0.35,
+
+      "ay_activity_soft_threshold": 0.5,
+      "ay_activity_hard_threshold": 7.00,
+
+      "steer_dot_soft_threshold": 0.10,
+      "steer_dot_hard_threshold": 0.80,
+
+      "r_kin_gyro_discrepancy_soft_threshold": 0.04,
+      "r_kin_gyro_discrepancy_hard_threshold": 0.35,
+
+      "min_vx_for_kinematic_vy_reference": 0.30
+    },
+
+    "standstill_mode": {
+      "wheel_speed_abs_mean_threshold": 0.15,
+      "ax_abs_mean_threshold": 0.25,
+      "ay_abs_mean_threshold": 0.35,
+      "yaw_rate_abs_mean_threshold": 0.05,
+      "abs_steer_mean_threshold": 0.03,
+      "torque_cmd_abs_mean_threshold": 3.0,
+
+      "vx_decay_tau_s": 0.05,
+      "vy_decay_tau_s": 0.05,
+      "r_decay_tau_s": 0.05,
+
+      "hard_zero_vx_threshold": 0.10,
+      "hard_zero_vy_threshold": 0.03,
+      "hard_zero_r_threshold": 0.0075,
+      "hard_zero_torque_cmd_threshold": 1.0
+    },
+
+    "straight_line_mode": {
+      "vx_min_threshold": 0.75,
+      "abs_steer_mean_threshold": 0.02,
+      "abs_steer_dot_mean_threshold": 0.05,
+      "ay_abs_mean_threshold": 0.40,
+      "yaw_rate_abs_mean_threshold": 0.02,
+
+      "vy_decay_tau_s": 0.15,
+      "r_decay_tau_s": 0.15,
+
+      "hard_zero_vy_threshold": 0.03,
+      "hard_zero_r_threshold": 0.01
+    },
+
+    "numeric": {
+      "min_vx_for_kinematic_model": 0.50,
+      "max_abs_vy": 15.0,
+      "max_abs_r": 5.0,
+      "clamp_negative_vx_to_zero": true
+    }
+  }
+}

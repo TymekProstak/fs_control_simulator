@@ -1,0 +1,37 @@
+<launch>
+  <arg name="config_json_path" default="$(find dv_odometry)/config/parms.json" />
+
+  <arg name="imu_topic" default="/dv_board/imu" />
+  <arg name="wheel_speed_topic" default="/dv_board/data" />
+  <arg name="steer_topic" default="/steer" />
+  <arg name="torque_topic" default="/dv_board/control" />
+  <arg name="ins_pose_topic" default="/ins/pose" />
+
+  <arg name="state_topic" default="/dv_odometry/state" />
+  <arg name="odometry_topic" default="/dv_odometry/odometry" />
+  <arg name="odometry_debug_topic" default="/dv_odometry/odometry_debug" />
+
+  <arg name="loop_hz" default="200.0" />
+  <arg name="gravity_init_duration_s" default="2.0" />
+
+  <node pkg="dv_odometry"
+        type="dv_odometry_node"
+        name="dv_odometry"
+        output="screen"
+        required="true">
+
+    <param name="config_json_path" value="$(arg config_json_path)" />
+    <param name="loop_hz" value="$(arg loop_hz)" />
+    <param name="gravity_init_duration_s" value="$(arg gravity_init_duration_s)" />
+
+    <param name="topics/imu" value="$(arg imu_topic)" />
+    <param name="topics/wheel_speed_vx" value="$(arg wheel_speed_topic)" />
+    <param name="topics/steer" value="$(arg steer_topic)" />
+    <param name="topics/torque_cmd" value="$(arg torque_topic)" />
+    <param name="topics/state_out" value="$(arg state_topic)" />
+    <param name="topics/odometry_out" value="$(arg odometry_topic)" />
+    <param name="topics/odometry_debug" value="$(arg odometry_debug_topic)" />
+    <param name="topics/ins_pose" value="$(arg ins_pose_topic)" />
+
+  </node>
+</launch>

@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>dv_path_planning</name>
+  <version>0.0.3</version>
+  <description>The dv_path_planning package</description>
+
+  <maintainer email="gmaciejg525@gmail.com">Maciej Grzęda</maintainer>
+
+  <license>MIT</license>
+  <author email="gmaciejg525@gmail.com">Maciej Grzęda</author>
+  <author email="paulina.gacek.pl@gmail.com">Paulina Gacek</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>dv_interfaces</build_depend>
+  <build_depend>message_generation</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>pcl_ros</build_depend>
+
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>rospy</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>dv_interfaces</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>pcl_ros</exec_depend>
+
+  <depend>dv_cone_detection</depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+  </export>
+
+  <test_depend>rosunit</test_depend>
+  <test_depend>gtest</test_depend> 
+  <test_depend>tf2</test_depend> 
+  <test_depend>geometry_msgs</test_depend> 
+  <test_depend>pcl_ros</test_depend> 
+</package>

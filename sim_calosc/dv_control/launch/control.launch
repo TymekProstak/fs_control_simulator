@@ -1,0 +1,9 @@
+<launch>
+    <arg name="only_low_speed" default="false" />
+    <arg name= "bang_bang" default="false" />S
+    <node pkg="dv_control" type="dv_control_node" name="control" output="screen">
+        <param name="only_low_speed" value="$(arg only_low_speed)" />
+        <param name="bang_bang" value="$(arg bang_bang)" />
+
+    </node>
+</launch>

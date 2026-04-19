@@ -1,0 +1,16 @@
+float32 epsi_avg
+float32 ey_avg
+float32 epsi_current
+float32 ey_current
+float32 v_ref
+float32 alat_ref
+float32 kappa_ref
+float32 R_ref
+float32 v_s_current
+float32 v_s_avg
+float32 next_yaw_rate_target
+float32 ax_target
+float32 gg_limit_x 
+float32 gg_limit_y
+float32 mpc_steer_rate
+float32 mpc_steer_angle

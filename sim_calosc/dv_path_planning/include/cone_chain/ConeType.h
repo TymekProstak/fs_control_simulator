@@ -1,0 +1,12 @@
+#pragma once
+
+enum ConeType
+{
+  ORANGE_SMALL = 0,
+  BLUE_LEFT = 1,
+  YELLOW_RIGHT = 2,
+  ORANGE_BIG = 3,
+  UNDEFINED = 4,
+  INTERPOLATED_LEFT = 5,
+  INTERPOLATED_RIGHT = 6,
+};

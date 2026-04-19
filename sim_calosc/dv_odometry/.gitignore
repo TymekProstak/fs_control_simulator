@@ -1,0 +1,12 @@
+.idea/*
+scripts/.idea/*
+scripts/__pycache__/*
+scripts/venv/bin/*
+scripts/venv/*
+scripts/*.pyc
+
+# Ignoruj inne pliki tymczasowe
+*.log
+*.tmp
+*.swp
+*.bak

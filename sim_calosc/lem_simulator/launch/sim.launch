@@ -1,0 +1,32 @@
+<launch>
+  <!-- Launch argument: INS mode (gauss|kalman). Domyślnie gauss. -->
+  <arg name="ins_mode" default="gauss"/>
+    <arg name="low_level_controlers" default="false"/>
+    <arg name="use_lidar" default="true"/>
+
+  <!-- Czas trwania symulacji [s]
+       sim_time < 0  -> pętla nieskończona
+       sim_time >= 0 -> symulacja kończy się po tym czasie -->
+  <arg name="sim_time" default="-1"/>
+
+  <!-- Pierwszy node: symulacja -->
+  <node pkg="lem_simulator"
+        type="sim_loop_node"
+        name="lem_simulation_node"
+        output="screen">
+    <param name="param_file" value="$(find lem_simulator)/config/params_default_lem.json"/>
+    <param name="cones_file" value="$(find lem_simulator)/tracks/random_track_cones_1.csv"/>
+    <param name="log_file"   value="$(find lem_simulator)/logs/run_default.csv"/>
+
+    <!-- INS mode: gauss (default) | kalman (TODO) -->
+    <param name="ins_mode" value="$(arg ins_mode)"/>
+
+    <!-- czas trwania symulacji -->
+    <param name="sim_time" value="$(arg sim_time)"/>
+    <param name="low_level_controlers" value="$(arg low_level_controlers)"/>
+    <param name="use_lidar" value="$(arg use_lidar)"/>
+  </node>
+
+  <!-- Fake path planning removed -->
+</launch>
+

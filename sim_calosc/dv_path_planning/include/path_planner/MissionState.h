@@ -1,0 +1,14 @@
+#ifndef MISSION_STATE_H
+#define MISSION_STATE_H
+
+enum MissionState
+{
+    LOOKING_FOR_START,
+    BEFORE_START,
+    DURING_LAP,
+    DURING_FINAL_LAP,
+    APPROACHING_FINISH_POINT,
+    FINISHED
+};
+
+#endif // MISSION_STATE_H

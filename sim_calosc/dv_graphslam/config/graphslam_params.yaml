@@ -1,0 +1,56 @@
+# GraphSLAM Configuration
+# dv_graphslam package
+
+# Data Association
+data_association:
+  radius: 0.8                  # meters - max distance to match observations to landmarks
+  use_mahalanobis: true         # use covariance-weighted distance instead of Euclidean
+  mahalanobis_threshold: 5.99    # chi-squared 95% threshold for 2 DOF
+  match_cone_types: true         # require same cone color for matching
+  observation_count_threshold: 5  # observations needed to become confirmed landmark
+
+# Observation Model (sensor noise)
+observation:
+  range_noise: 0.4              # meters std dev
+  bearing_noise: 0.1           # radians std dev
+  min_range: 0.3                 # meters - reject observations closer than this
+  max_range: 20               # meters - reject observations farther than this
+  max_fov_angle: 180.0           # degrees - maximum FOV (±angle, so 180 = full 360° circle)
+
+# Odometry Model (motion noise)
+odometry:
+  translation_noise: 0.1         # meters per meter traveled
+  rotation_noise: 0.05           # radians per radian rotated
+  smoothing_enabled: false        # smooth INS/RTK odometry before SLAM usage/publication
+  smoothing_alpha: 0.05          # EMA alpha in [0,1], higher = less smoothing
+  robust_kernel_delta: 2.8       # Huber delta for odom residual (sqrt(chi2_3dof_95%) ~= 2.8)
+  adaptive_info_enabled: true    # adapt odom edge information based on delta magnitude
+  translation_gate: 0.8          # [m] odom delta above this starts downweighting x/y info
+  rotation_gate: 0.35            # [rad] odom delta above this starts downweighting yaw info
+  hard_gate_ratio: 1.2           # stronger attenuation if delta is > ratio * gate
+  min_info_scale: 0.01           # minimum info scaling for severe jumps
+  offset_smoothing_enabled: true # smooth map->odom correction estimated by optimizer
+  offset_smoothing_alpha: 0.3   # EMA alpha for map->odom correction updates
+
+# g2o Optimizer
+optimizer:
+  iterations: 20                 # g2o iterations per optimization cycle
+  loop_rate: 2.0                 # Hz - how often to run optimization
+  min_poses_to_optimize: 1       # don't optimize until this many poses accumulated
+  min_pose_distance: 0.5         # meters - minimum translation to create a new pose
+  min_pose_angle: 5.0              # degrees - minimum rotation to create a new pose
+  max_observation_edges: 6000
+  max_odometry_edges: 2000
+
+# Topics
+topics:
+  odom_input: "/ins/pose"
+  cones_input: "/dv_cone_detector/cones"
+  pose_output: "/slam/pose"
+  cones_output: "/slam/cones"
+  markers_output: "/slam/markers"
+
+# TF
+tf:
+  map_frame: "map"
+  robot_frame: "bolide_CoG"

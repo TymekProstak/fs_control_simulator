@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Load robot description for TF tree (sensor frames) -->
+    <node pkg="dv_graphslam" type="dv_graphslam_node" name="graphslam" output="screen">
+        <rosparam command="load" file="$(find dv_graphslam)/config/graphslam_params.yaml" />
+    </node>
+</launch>

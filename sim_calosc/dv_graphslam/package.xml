@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>dv_graphslam</name>
+  <version>1.0.0</version>
+  <description>GraphSLAM implementation using g2o and nanoflann for Formula Student Driverless</description>
+
+  <maintainer email="jakub.janus@racing.agh.edu.pl">Jakub Janus</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <!-- Core ROS dependencies -->
+  <depend>roscpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+  <depend>eigen_conversions</depend>
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
+  <depend>pcl_ros</depend>
+  <depend>dv_interfaces</depend>
+  <depend>rospy</depend>
+
+  <!-- External libraries -->
+  <depend>libg2o</depend>
+  <depend>eigen</depend>
+
+  <export>
+    <build_type>catkin</build_type>
+  </export>
+</package>

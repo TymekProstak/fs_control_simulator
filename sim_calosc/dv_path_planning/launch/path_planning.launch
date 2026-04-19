@@ -1,0 +1,14 @@
+<launch>
+   <arg name="fake_cone_detector" default="False"/>
+   <arg name="mission" default="discovery"/>
+   <group if="$(eval arg('mission') == 'discovery')">
+      <node pkg="dv_path_planning" type="dv_path_planning_discovery_node" name="PathPlanning" output="screen">
+         <param name="fake_cone_detector" value="$(arg fake_cone_detector)" />
+      </node>  
+   </group>
+   <group if="$(eval arg('mission') == 'trackdrive')">
+      <node pkg="dv_path_planning" type="dv_path_planning_trackdrive_node" name="PathPlanning" output="screen">
+         <param name="fake_cone_detector" value="$(arg fake_cone_detector)" />
+      </node>  
+   </group>
+</launch>
